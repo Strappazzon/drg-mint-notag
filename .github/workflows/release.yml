@@ -39,7 +39,7 @@ permissions:
 on:
   push:
     tags:
-      - '*-?v[0-9]+*'
+      - "v*"
 
 jobs:
   # Create the Github Release™ so the packages have something to be uploaded to
@@ -52,7 +52,7 @@ jobs:
     steps:
       - uses: actions/checkout@v3
       - name: Install Rust
-        run: rustup update nightly --no-self-update && rustup default nightly
+        run: rustup install nightly-2023-08-18 --no-self-update && rustup default nightly-2023-08-18
       - name: Install cargo-dist
         run: curl --proto '=https' --tlsv1.2 -LsSf https://github.com/axodotdev/cargo-dist/releases/download/v0.0.7/cargo-dist-installer.sh | sh
       - id: create-release
@@ -98,7 +98,7 @@ jobs:
     steps:
       - uses: actions/checkout@v3
       - name: Install Rust
-        run: rustup update nightly --no-self-update && rustup default nightly
+        run: rustup install nightly-2023-08-18 --no-self-update && rustup default nightly-2023-08-18
       - name: Install x86_64-pc-windows-gnu target
         if: runner.os == 'Linux' || runner.os == 'macOS'
         run: rustup target add x86_64-pc-windows-gnu
