@@ -151,7 +151,7 @@ impl ResolveMods {
                     app.resolve_mod.clear();
                     app.state.mod_data.save().unwrap();
                     app.last_action_status =
-                        LastActionStatus::Success("mods successfully resolved".to_string());
+                        LastActionStatus::Success("Mods successfully resolved.".to_string());
                 }
                 Err(e) => match e.downcast::<IntegrationError>() {
                     Ok(IntegrationError::NoProvider { url: _, factory }) => {
@@ -205,14 +205,14 @@ impl Integrate {
                 Ok(()) => {
                     info!("integration complete");
                     app.last_action_status =
-                        LastActionStatus::Success("integration complete".to_string());
+                        LastActionStatus::Success("Hook DLL and mod bundle installed.".to_string());
                 }
                 Err(e) => match e.downcast::<IntegrationError>() {
                     Ok(IntegrationError::NoProvider { url: _, factory }) => {
                         app.window_provider_parameters =
                             Some(WindowProviderParameters::new(factory, &app.state));
                         app.last_action_status =
-                            LastActionStatus::Failure("no provider".to_string());
+                            LastActionStatus::Failure("No provider.".to_string());
                     }
                     Err(e) => {
                         error!("{:#?}\n{}", e, e.backtrace());
@@ -273,7 +273,7 @@ impl UpdateCache {
                 Ok(()) => {
                     info!("cache update complete");
                     app.last_action_status =
-                        LastActionStatus::Success("successfully updated cache".to_string());
+                        LastActionStatus::Success("Successfully updated cache.".to_string());
                 }
                 Err(e) => match e.downcast::<IntegrationError>() {
                     // TODO make provider initializing more generic
@@ -281,7 +281,7 @@ impl UpdateCache {
                         app.window_provider_parameters =
                             Some(WindowProviderParameters::new(factory, &app.state));
                         app.last_action_status =
-                            LastActionStatus::Failure("no provider".to_string());
+                            LastActionStatus::Failure("No provider.".to_string());
                     }
                     Err(e) => {
                         error!("{:#?}\n{}", e, e.backtrace());
@@ -465,14 +465,14 @@ impl LintMods {
                     info!("lint mod report complete");
                     app.lint_report = Some(report);
                     app.last_action_status =
-                        LastActionStatus::Success("lint mod report complete".to_string());
+                        LastActionStatus::Success("Lint report complete.".to_string());
                 }
                 Err(e) => match e.downcast::<IntegrationError>() {
                     Ok(IntegrationError::NoProvider { url: _, factory }) => {
                         app.window_provider_parameters =
                             Some(WindowProviderParameters::new(factory, &app.state));
                         app.last_action_status =
-                            LastActionStatus::Failure("no provider".to_string());
+                            LastActionStatus::Failure("No provider.".to_string());
                     }
                     Err(e) => {
                         error!("{:#?}\n{}", e, e.backtrace());
