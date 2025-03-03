@@ -4,6 +4,15 @@
 
 ## [Unreleased] - ReleaseDate
 
+- Remove `[MODDED]` prefix from public lobby name
+- Rename program to `mint-notag` from `DRG Mod Integration`
+  - Logs and config paths will still use the old name
+- Add CTRL + Q keyboard shortcut to quit the program
+- Add program icon
+- Update modal will show without delays
+- Increase initial window size
+- Shorten approval labels
+
 ## [0.2.10] - 2023-08-18
 
 - Many small improvements to the GUI
