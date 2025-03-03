@@ -4,10 +4,13 @@
 
 ## [Unreleased] - ReleaseDate
 
+## [0.2.11] - 2025-03-04
+
 - Remove `[MODDED]` prefix from public lobby name
 - Rename program to `mint-notag` from `DRG Mod Integration`
   - Logs and config paths will still use the old name
 - Add CTRL + Q keyboard shortcut to quit the program
+- Better buttons description
 - Add program icon
 - Update modal will show without delays
 - Increase initial window size
@@ -33,7 +36,8 @@
 - Fix including same asset paths with different casings causing Unreal Engine to load neither ([#29](https://github.com/trumank/drg-mod-integration/issues/29))
 
 <!-- next-url -->
-[Unreleased]: https://github.com/trumank/drg-mod-integration/compare/v0.2.10...HEAD
+[Unreleased]: https://github.com/Strappazzon/drg-mint-notag/compare/v0.2.11...HEAD
+[0.2.11]: https://github.com/Strappazzon/drg-mint-notag/compare/832f7db...v0.2.11
 [0.2.10]: https://github.com/trumank/drg-mod-integration/compare/v0.2.9...v0.2.10
 [0.2.9]: https://github.com/trumank/drg-mod-integration/compare/v0.2.8...v0.2.9
 [0.2.8]: https://github.com/trumank/drg-mod-integration/compare/v0.2.7...v0.2.8
