@@ -47,7 +47,7 @@ use self::toggle_switch::toggle_switch;
 
 pub fn gui(args: Option<Vec<String>>) -> Result<()> {
     let options = eframe::NativeOptions {
-        initial_window_size: Some(egui::vec2(800.0, 400.0)),
+        initial_window_size: Some(egui::vec2(900.0, 500.0)),
         drag_and_drop_support: true,
         ..Default::default()
     };
