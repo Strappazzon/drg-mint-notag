@@ -655,7 +655,7 @@ impl App {
             (self.available_update.as_ref(), self.show_update_time)
         {
             let now = SystemTime::now();
-            let wait_time = Duration::from_secs(10);
+            let wait_time = Duration::from_secs(1);
             egui::Area::new("available-update-overlay")
                 .movable(false)
                 .fixed_pos(Pos2::ZERO)
