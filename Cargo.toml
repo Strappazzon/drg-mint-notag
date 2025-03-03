@@ -3,6 +3,10 @@ name = "drg_mod_integration"
 version = "0.2.10"
 edition = "2021"
 repository = "https://github.com/Strappazzon/drg-mint-notag"
+build = "src/build.rs"
+
+[build-dependencies]
+winresource = "*"
 
 [dependencies]
 anyhow = { version = "1.0.72", features = ["backtrace"] }
