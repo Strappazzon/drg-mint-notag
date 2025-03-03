@@ -1437,10 +1437,13 @@ impl eframe::App for App {
                         }
 
                         ui.add_enabled_ui(self.state.config.drg_pak_path.is_some(), |ui| {
-                            let mut button = ui.button("Install mods");
+                            let mut button = ui.button("Apply changes").on_hover_text(
+                                "Install the hook DLL inside the game folder and regenerate mod bundle.",
+                            );
                             if self.state.config.drg_pak_path.is_none() {
                                 button = button.on_disabled_hover_text(
-                                    "DRG install not found. Configure it in the settings menu.",
+                                    "Deep Rock Galactic not found.\n\
+                                    Set the correct path in the settings menu.",
                                 );
                             }
 
@@ -1464,10 +1467,13 @@ impl eframe::App for App {
                         });
 
                         ui.add_enabled_ui(self.state.config.drg_pak_path.is_some(), |ui| {
-                            let mut button = ui.button("Uninstall mods");
+                            let mut button = ui.button("Uninstall hook and mods").on_hover_text(
+                                "Remove the hook DLL and mod bundle from the game folder.",
+                            );
                             if self.state.config.drg_pak_path.is_none() {
                                 button = button.on_disabled_hover_text(
-                                    "DRG install not found. Configure it in the settings menu.",
+                                    "Deep Rock Galactic not found.\n\
+                                    Set the correct path in the settings menu.",
                                 );
                             }
                             if button.clicked() {
@@ -1501,8 +1507,8 @@ impl eframe::App for App {
                         if ui
                             .button("Update cache")
                             .on_hover_text(
-                                "Checks for updates for all mods and updates local cache\n\
-                                due to strict mod.io rate-limiting, can take a long time for large mod lists",
+                                "Checks for updates for all mods and updates local cache.\n\
+                                This can take a long time for large mod lists due to strict mod.io rate-limiting.",
                             )
                             .clicked()
                         {
@@ -1528,7 +1534,7 @@ impl eframe::App for App {
                     }
                     ui.spinner();
                 }
-                if ui.button("Lint mods").on_hover_text("Lint mods in the current profile").clicked() {
+                if ui.button("Lint mods").on_hover_text("Lint mods in the current profile.").clicked() {
                     let mut mods = Vec::new();
                     let active_profile = self.state.mod_data.active_profile.clone();
                     self.state.mod_data.for_each_enabled_mod(&active_profile, |mc| {
@@ -1536,7 +1542,7 @@ impl eframe::App for App {
                     });
                     self.lints_toggle_window = Some(WindowLintsToggle { mods });
                 }
-                if ui.button("⚙").on_hover_text("Open settings").clicked() {
+                if ui.button("⚙").on_hover_text("Open mint-notag settings.").clicked() {
                     self.settings_window = Some(WindowSettings::new(&self.state));
                 }
                 if let Some(available_update) = &self.available_update {
