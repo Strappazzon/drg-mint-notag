@@ -231,6 +231,7 @@ impl<T> TArray<T> {
     fn as_slice(&self) -> &[T] {
         unsafe { std::slice::from_raw_parts(self.data, self.num as usize) }
     }
+    #[allow(dead_code)]
     fn as_slice_mut(&mut self) -> &mut [T] {
         unsafe { std::slice::from_raw_parts_mut(self.data as *mut _, self.num as usize) }
     }
