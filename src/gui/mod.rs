@@ -105,6 +105,8 @@ pub struct App {
     search_string: Option<String>,
     scroll_to_match: bool,
     settings_window: Option<WindowSettings>,
+    about_window: Option<WindowAbout>,
+    header_texture_handle: Option<egui::TextureHandle>,
     file_texture_handle: Option<egui::TextureHandle>,
     http_texture_handle: Option<egui::TextureHandle>,
     modio_texture_handle: Option<egui::TextureHandle>,
@@ -163,6 +165,8 @@ impl App {
             search_string: Default::default(),
             scroll_to_match: false,
             settings_window: None,
+            about_window: None,
+            header_texture_handle: None,
             file_texture_handle: None,
             http_texture_handle: None,
             modio_texture_handle: None,
@@ -964,6 +968,53 @@ impl App {
         }
     }
 
+    fn show_about(&mut self, ctx: &egui::Context) {
+        if let Some(_) = self.about_window {
+            let mut open = true;
+
+            egui::Window::new("About")
+                .open(&mut open)
+                .collapsible(false)
+                .resizable(false)
+                .show(ctx, |ui| {
+
+                    // Load logo image
+                    let header_texture: &egui::TextureHandle = self.header_texture_handle.get_or_insert_with(|| {
+                        let image = image::load_from_memory(include_bytes!("../../assets/header.png")).unwrap();
+                        let size = [image.width() as _, image.height() as _];
+                        let image_buffer = image.to_rgba8();
+                        let pixels = image_buffer.as_flat_samples();
+                        let image = egui::ColorImage::from_rgba_unmultiplied(size, pixels.as_slice());
+
+                        ui.ctx().load_texture("header-image", image, Default::default())
+                    });
+
+                    ui.image(header_texture, header_texture.size_vec2());
+                    ui.add_space(10.);
+                    ui.label("Third-party mod integration tool for Deep Rock Galactic.");
+                    ui.add_space(10.);
+                    ui.label("This fork removes the \"[MODDED]\" prefix from the public lobby name.");
+                    ui.horizontal(|ui| {
+                        ui.spacing_mut().item_spacing.x = 0.0;
+                        ui.label("For more information about other changes, see the ");
+                        ui.hyperlink_to("README", "https://github.com/Strappazzon/drg-mint-notag/blob/master/.github/README.md");
+                        ui.label(".");
+                    });
+                    ui.add_space(10.);
+
+                    ui.with_layout(egui::Layout::right_to_left(Align::TOP), |ui| {
+                        if ui.button("Close").clicked() {
+                            self.about_window = None;
+                        }
+                    });
+                });
+
+            if !open {
+                self.about_window = None;
+            }
+        }
+    }
+
     fn show_lints_toggle(&mut self, ctx: &egui::Context) {
         if let Some(lints_toggle) = &self.lints_toggle_window {
             let mut open = true;
@@ -1453,6 +1504,14 @@ impl WindowSettings {
     }
 }
 
+struct WindowAbout;
+
+impl WindowAbout {
+    fn new() -> Self {
+        Self
+    }
+}
+
 struct WindowLintReport;
 
 struct WindowLintsToggle {
@@ -1477,6 +1536,7 @@ impl eframe::App for App {
         self.show_provider_parameters(ctx);
         self.show_profile_windows(ctx);
         self.show_settings(ctx);
+        self.show_about(ctx);
         self.show_lints_toggle(ctx);
         self.show_lint_report(ctx);
 
@@ -1610,6 +1670,9 @@ impl eframe::App for App {
                 }
                 if ui.button("⚙").on_hover_text("Open mint-notag settings.").clicked() {
                     self.settings_window = Some(WindowSettings::new(&self.state));
+                }
+                if ui.button("\u{2139}").on_hover_text("About mint-notag.").clicked() {
+                    self.about_window = Some(WindowAbout::new());
                 }
                 if let Some(available_update) = &self.available_update {
                     if ui
