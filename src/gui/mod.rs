@@ -57,6 +57,7 @@ pub fn gui(args: Option<Vec<String>>) -> Result<()> {
     let options = eframe::NativeOptions {
         centered: true,
         initial_window_size: Some(egui::vec2(900.0, 500.0)),
+        min_window_size: Some(egui::vec2(630.0, 175.0)),
         drag_and_drop_support: true,
         icon_data: Some(eframe::IconData {
             rgba: app_ico_data,
