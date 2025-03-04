@@ -337,15 +337,7 @@ impl App {
                                 Some("All lobby members must use this mod for it to work correctly.",),
                             );
                         }
-                        // NOTE: Maybe remove this label?
-                        RequiredStatus::Optional => {
-                            mk_searchable_modio_tag(
-                                "Optional",
-                                ui,
-                                None,
-                                Some("Clients are not required to install this mod to function."),
-                            );
-                        }
+                        RequiredStatus::Optional => {}
                     }
 
                     if *qol {
