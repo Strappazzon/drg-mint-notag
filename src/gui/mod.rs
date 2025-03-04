@@ -371,20 +371,14 @@ impl App {
 
                 if ui
                     .add(toggle_switch(&mut mc.enabled))
-                    .on_hover_text_at_pointer("Enabled?")
+                    .on_hover_text_at_pointer(
+                        "Enable\\Disable mod.\n\
+                        Press \"Apply changes\" for the changes to take effect.",
+                    )
                     .changed()
                 {
                     ctx.needs_save = true;
                 }
-
-                /*
-                if ui
-                    .add(egui::Checkbox::without_text(&mut mc.required))
-                    .changed()
-                {
-                    needs_save = true;
-                }
-                */
 
                 let info = self.state.store.get_mod_info(&mc.spec);
 
