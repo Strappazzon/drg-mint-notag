@@ -23,6 +23,7 @@ use eframe::{
     epaint::{text::LayoutJob, Color32, Stroke},
 };
 use egui_commonmark::{CommonMarkCache, CommonMarkViewer};
+use image::GenericImageView;
 use tokio::{
     sync::mpsc::{self, Receiver, Sender},
     task::JoinHandle,
@@ -45,10 +46,22 @@ use request_counter::{RequestCounter, RequestID};
 
 use self::toggle_switch::toggle_switch;
 
+const APP_ICON: &[u8] = include_bytes!("../../assets/icon-gui.ico");
+
 pub fn gui(args: Option<Vec<String>>) -> Result<()> {
+    // Decode ICO file
+    let app_ico = image::load_from_memory(APP_ICON).expect("failed to load app icon");
+    let (width, height) = app_ico.dimensions();
+    let app_ico_data = app_ico.into_rgba8().into_raw();
+
     let options = eframe::NativeOptions {
         initial_window_size: Some(egui::vec2(900.0, 500.0)),
         drag_and_drop_support: true,
+        icon_data: Some(eframe::IconData {
+            rgba: app_ico_data,
+            width: 32,
+            height: 32,
+        }),
         ..Default::default()
     };
     eframe::run_native(
