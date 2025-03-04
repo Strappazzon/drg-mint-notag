@@ -60,6 +60,8 @@ pub fn gui(args: Option<Vec<String>>) -> Result<()> {
     Ok(())
 }
 
+const FILE_ICO_PNG: &[u8] = include_bytes!("../../assets/folder.png");
+const HTTP_ICO_PNG: &[u8] = include_bytes!("../../assets/globe.png");
 const MODIO_LOGO_PNG: &[u8] = include_bytes!("../../assets/modio-cog-blue.png");
 
 pub struct App {
@@ -78,6 +80,8 @@ pub struct App {
     search_string: Option<String>,
     scroll_to_match: bool,
     settings_window: Option<WindowSettings>,
+    file_texture_handle: Option<egui::TextureHandle>,
+    http_texture_handle: Option<egui::TextureHandle>,
     modio_texture_handle: Option<egui::TextureHandle>,
     last_action_status: LastActionStatus,
     available_update: Option<GitHubRelease>,
@@ -134,6 +138,8 @@ impl App {
             search_string: Default::default(),
             scroll_to_match: false,
             settings_window: None,
+            file_texture_handle: None,
+            http_texture_handle: None,
             modio_texture_handle: None,
             last_action_status: LastActionStatus::Idle,
             available_update: None,
@@ -276,7 +282,7 @@ impl App {
                                 "V",
                                 ui,
                                 Some(egui::Color32::LIGHT_GREEN),
-                                Some("Does not contain any gameplay affecting features or changes"),
+                                Some("Client-side mod. Doesn't change gameplay elements."),
                             );
                         }
                         ApprovalStatus::Approved => {
@@ -284,7 +290,7 @@ impl App {
                                 "A",
                                 ui,
                                 Some(egui::Color32::LIGHT_BLUE),
-                                Some("Contains gameplay affecting features or changes"),
+                                Some("Changes to gameplay elements."),
                             );
                         }
                         ApprovalStatus::Sandbox => {
@@ -292,7 +298,7 @@ impl App {
                                 "S",
                                 ui,
                                 Some(egui::Color32::LIGHT_YELLOW),
-                                Some("Contains significant, possibly progression breaking, changes to gameplay"),
+                                Some("Dramatically changes gameplay elements,\nawaiting approval or pak was manually added."),
                             );
                         }
                     }
@@ -303,17 +309,16 @@ impl App {
                                 "RequiredByAll",
                                 ui,
                                 Some(egui::Color32::LIGHT_RED),
-                                Some(
-                                    "All lobby members must use this mod for it to work correctly!",
-                                ),
+                                Some("All lobby members must use this mod for it to work correctly.",),
                             );
                         }
+                        // NOTE: Maybe remove this label?
                         RequiredStatus::Optional => {
                             mk_searchable_modio_tag(
                                 "Optional",
                                 ui,
                                 None,
-                                Some("Clients are not required to install this mod to function"),
+                                Some("Clients are not required to install this mod to function."),
                             );
                         }
                     }
@@ -418,7 +423,7 @@ impl App {
 
                     if ui
                         .button("📋")
-                        .on_hover_text_at_pointer("copy URL")
+                        .on_hover_text_at_pointer("Copy URL.")
                         .clicked()
                     {
                         ui.output_mut(|o| o.copied_text = mc.spec.url.to_owned());
@@ -509,10 +514,46 @@ impl App {
                             ui.add(img);
                         }
                         "http" => {
-                            ui.label("🌐");
+                            let texture: &egui::TextureHandle =
+                                self.http_texture_handle.get_or_insert_with(|| {
+                                    let image = image::load_from_memory(HTTP_ICO_PNG).unwrap();
+                                    let size = [image.width() as _, image.height() as _];
+                                    let image_buffer = image.to_rgba8();
+                                    let pixels = image_buffer.as_flat_samples();
+                                    let image = egui::ColorImage::from_rgba_unmultiplied(
+                                        size,
+                                        pixels.as_slice(),
+                                    );
+
+                                    ui.ctx()
+                                        .load_texture("http-logo", image, Default::default())
+                                });
+                            let mut img = egui::Image::new(texture, [16.0, 16.0]);
+                            if !mc.enabled {
+                                img = img.tint(Color32::LIGHT_RED);
+                            }
+                            ui.add(img);
                         }
                         "file" => {
-                            ui.label("📁");
+                            let texture: &egui::TextureHandle =
+                                self.file_texture_handle.get_or_insert_with(|| {
+                                    let image = image::load_from_memory(FILE_ICO_PNG).unwrap();
+                                    let size = [image.width() as _, image.height() as _];
+                                    let image_buffer = image.to_rgba8();
+                                    let pixels = image_buffer.as_flat_samples();
+                                    let image = egui::ColorImage::from_rgba_unmultiplied(
+                                        size,
+                                        pixels.as_slice(),
+                                    );
+
+                                    ui.ctx()
+                                        .load_texture("file-logo", image, Default::default())
+                                });
+                            let mut img = egui::Image::new(texture, [16.0, 16.0]);
+                            if !mc.enabled {
+                                img = img.tint(Color32::LIGHT_RED);
+                            }
+                            ui.add(img);
                         }
                         _ => unimplemented!("unimplemented provider kind"),
                     }
@@ -529,7 +570,7 @@ impl App {
                 } else {
                     if ui
                         .button("📋")
-                        .on_hover_text_at_pointer("Copy URL")
+                        .on_hover_text_at_pointer("Copy URL.")
                         .clicked()
                     {
                         ui.output_mut(|o| o.copied_text = mc.spec.url.to_owned());
@@ -540,7 +581,11 @@ impl App {
 
             let mut ui_item =
                 |ctx: &mut Ctx, ui: &mut Ui, mc: &mut ModOrGroup, state: egui_dnd::ItemState| {
-                    if ui.button(" ➖ ").clicked() {
+                    if ui
+                        .button(" 🗑️ ")
+                        .on_hover_text_at_pointer("Remove mod.")
+                        .clicked()
+                    {
                         ctx.btn_remove = Some(state.index);
                     }
 
@@ -597,7 +642,7 @@ impl App {
                     frame.show(ui, |ui| {
                         ui.horizontal(|ui| {
                             handle.ui(ui, |ui| {
-                                ui.label("☰");
+                                ui.label(" ☰ ");
                             });
 
                             ui_item(&mut ctx, ui, item, state);
@@ -817,7 +862,10 @@ impl App {
                                 ..Default::default()
                             },
                         );
-                        ui.label(job).on_hover_cursor(egui::CursorIcon::Help).on_hover_text("Path to FSD-WindowsNoEditor.pak (FSD-WinGDK.pak for Microsoft Store version)\nLocated inside the \"Deep Rock Galactic\" installation directory under FSD/Content/Paks.");
+                        ui.label(job).on_hover_cursor(egui::CursorIcon::Help).on_hover_text(
+                            "Path to \"FSD-WindowsNoEditor.pak\" (\"FSD-WinGDK.pak\" for the Microsoft Store version).\n\
+                            The pak is located inside <Deep Rock Galactic installation directory>/FSD/Content/Paks."
+                        );
                         ui.horizontal(|ui| {
                             let res = ui.add(
                                 egui::TextEdit::singleline(
@@ -831,7 +879,7 @@ impl App {
                             if is_committed(&res) {
                                 try_save = true;
                             }
-                            if ui.button("browse").clicked() {
+                            if ui.button("Browse...").clicked() {
                                 if let Some(fsd_pak) = rfd::FileDialog::new()
                                     .add_filter("DRG Pak", &["pak"])
                                     .pick_file()
@@ -863,7 +911,7 @@ impl App {
                         for provider_factory in ModStore::get_provider_factories() {
                             ui.label(provider_factory.id);
                             if ui.add_enabled(!provider_factory.parameters.is_empty(), egui::Button::new("⚙"))
-                                    .on_hover_text(format!("Open \"{}\" settings", provider_factory.id))
+                                    .on_hover_text(format!("Open \"{}\" settings.", provider_factory.id))
                                     .clicked() {
                                 self.window_provider_parameters = Some(
                                     WindowProviderParameters::new(provider_factory, &self.state),
@@ -874,7 +922,7 @@ impl App {
                     });
 
                     ui.with_layout(egui::Layout::right_to_left(Align::TOP), |ui| {
-                        if ui.add_enabled(window.drg_pak_path_err.is_none(), egui::Button::new("save")).clicked() {
+                        if ui.add_enabled(window.drg_pak_path_err.is_none(), egui::Button::new("Save")).clicked() {
                             try_save = true;
                         }
                         if let Some(error) = &window.drg_pak_path_err {
@@ -884,7 +932,7 @@ impl App {
 
                 });
             if try_save {
-                if let Err(e) = is_drg_pak(&window.drg_pak_path).context("Is not valid DRG pak") {
+                if let Err(e) = is_drg_pak(&window.drg_pak_path).context("Selected DRG pak is not valid!") {
                     window.drg_pak_path_err = Some(e.to_string());
                 } else {
                     self.state.config.drg_pak_path = Some(PathBuf::from(
@@ -911,7 +959,7 @@ impl App {
                     egui::ScrollArea::vertical().show(ui, |ui| {
                         egui::Grid::new("lints-toggle-grid").show(ui, |ui| {
                             ui.heading("Lint");
-                            ui.heading("Enabled?");
+                            ui.heading("Toggle");
                             ui.end_row();
 
                             ui.label("Archive with multiple paks");
@@ -1493,7 +1541,7 @@ impl eframe::App for App {
                                     match uninstall(pak_path, mods) {
                                         Ok(()) => {
                                             self.last_action_status =
-                                            LastActionStatus::Success("Successfully uninstalled mods".to_string());
+                                            LastActionStatus::Success("Successfully uninstalled mods.".to_string());
                                         },
                                         Err(e) => {
                                             self.last_action_status =
@@ -1561,7 +1609,7 @@ impl eframe::App for App {
                     match &self.last_action_status {
                         LastActionStatus::Success(msg) => {
                             ui.label(
-                                egui::RichText::new("STATUS")
+                                egui::RichText::new(" SUCCESS ")
                                     .color(Color32::BLACK)
                                     .background_color(Color32::LIGHT_GREEN)
                             );
@@ -1569,7 +1617,7 @@ impl eframe::App for App {
                         },
                         LastActionStatus::Failure(msg) => {
                             ui.label(
-                                egui::RichText::new("STATUS")
+                                egui::RichText::new(" FAILED ")
                                     .color(Color32::BLACK)
                                     .background_color(Color32::LIGHT_RED)
                             );
@@ -1586,12 +1634,12 @@ impl eframe::App for App {
                     && self.update_rid.is_none()
                     && self.lint_rid.is_none(),
             );
-            // profile selection
 
+            // profile selection
             let buttons = |ui: &mut Ui, mod_data: &mut ModData| {
                 if ui
                     .button("📋")
-                    .on_hover_text_at_pointer("Copy profile mods")
+                    .on_hover_text_at_pointer("Copy mods URL in the current profile.")
                     .clicked()
                 {
                     let mut mods = Vec::new();

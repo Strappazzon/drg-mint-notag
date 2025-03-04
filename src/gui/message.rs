@@ -273,7 +273,7 @@ impl UpdateCache {
                 Ok(()) => {
                     info!("cache update complete");
                     app.last_action_status =
-                        LastActionStatus::Success("Successfully updated cache.".to_string());
+                        LastActionStatus::Success("Cache updated.".to_string());
                 }
                 Err(e) => match e.downcast::<IntegrationError>() {
                     // TODO make provider initializing more generic
