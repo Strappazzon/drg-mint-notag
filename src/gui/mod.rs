@@ -719,8 +719,6 @@ impl App {
         if let (Some(update), Some(update_time)) =
             (self.available_update.as_ref(), self.show_update_time)
         {
-            let now = SystemTime::now();
-            let wait_time = Duration::from_secs(1);
             egui::Area::new("available-update-overlay")
                 .movable(false)
                 .fixed_pos(Pos2::ZERO)
@@ -737,17 +735,22 @@ impl App {
                 .anchor(Align2::CENTER_CENTER, Vec2::ZERO)
                 .resizable(false)
                 .show(ctx, |ui| {
+                    // https://docs.rs/egui_commonmark/latest/egui_commonmark/struct.CommonMarkViewer.html
                     CommonMarkViewer::new("available-update")
                         .max_image_width(Some(512))
+                        .show_alt_text_on_hover(false)
                         .show(ui, &mut self.cache, &update.body);
                     ui.with_layout(egui::Layout::right_to_left(Align::TOP), |ui| {
-                        let elapsed = now.duration_since(update_time).unwrap_or_default();
-                        if elapsed > wait_time {
-                            if ui.button("Close").clicked() {
-                                self.show_update_time = None;
-                            }
-                        } else {
-                            ui.spinner();
+                        if ui.button("Close").clicked() {
+                            self.show_update_time = None;
+                        }
+                        if ui.button("Download").clicked() {
+                            ui.ctx().output_mut(|o| {
+                                o.open_url = Some(egui::output::OpenUrl {
+                                    url: update.html_url.clone(),
+                                    new_tab: true,
+                                });
+                            });
                         }
                     });
                 });
@@ -1608,8 +1611,10 @@ impl eframe::App for App {
                     self.settings_window = Some(WindowSettings::new(&self.state));
                 }
                 if let Some(available_update) = &self.available_update {
-                    if ui.button(egui::RichText::new("\u{26A0}").color(ui.visuals().warn_fg_color))
-                        .on_hover_text(format!("Update available: {}\n{}", available_update.tag_name, available_update.html_url))
+                    if ui
+                        // Dodger blue arrow
+                        .button(egui::RichText::new("\u{21BB}").color(Color32::from_rgb(0, 143, 255)))
+                        .on_hover_text(format!("Update available: {}.\nClick to open the download page.", available_update.tag_name))
                         .clicked() {
                             ui.ctx().output_mut(|o| {
                                 o.open_url = Some(egui::output::OpenUrl {
