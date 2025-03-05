@@ -4,6 +4,22 @@
 
 ## [Unreleased] - ReleaseDate
 
+## [0.2.12] - 2025-03-05
+
+- Improve labels and messages
+- Improve delete button
+- Remove "Optional" label
+- Add icon to taskbar and title bar
+- Center main window on screen
+- Set min window size
+  - 630 x 175
+- Improve updater
+- Add about window
+- Change description of mod toggle switch
+- Reduce release size by removing debug symbols
+- Indicate which mod causes integration error when possible (merge from upstream)
+- Detour DoesSaveGameExist (merge from upstream)
+
 ## [0.2.11] - 2025-03-04
 
 - Remove `[MODDED]` prefix from public lobby name
@@ -36,7 +52,8 @@
 - Fix including same asset paths with different casings causing Unreal Engine to load neither ([#29](https://github.com/trumank/drg-mod-integration/issues/29))
 
 <!-- next-url -->
-[Unreleased]: https://github.com/Strappazzon/drg-mint-notag/compare/v0.2.11...HEAD
+[Unreleased]: https://github.com/Strappazzon/drg-mint-notag/compare/v0.2.12...HEAD
+[0.2.12]: https://github.com/Strappazzon/drg-mint-notag/compare/v0.2.11...v0.2.12
 [0.2.11]: https://github.com/Strappazzon/drg-mint-notag/compare/832f7db...v0.2.11
 [0.2.10]: https://github.com/trumank/drg-mod-integration/compare/v0.2.9...v0.2.10
 [0.2.9]: https://github.com/trumank/drg-mod-integration/compare/v0.2.8...v0.2.9
