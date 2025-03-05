@@ -969,7 +969,8 @@ impl App {
     }
 
     fn show_about(&mut self, ctx: &egui::Context) {
-        if let Some(_) = self.about_window {
+        // if let Some(_) = self.about_window {
+        if let Some(window) = &mut self.about_window {
             let mut open = true;
 
             egui::Window::new("About")
@@ -991,13 +992,23 @@ impl App {
 
                     ui.image(header_texture, header_texture.size_vec2());
                     ui.add_space(10.);
-                    ui.label("Third-party mod integration tool for Deep Rock Galactic.");
+                    ui.label(format!("mint-notag v{}", env!("CARGO_PKG_VERSION")));
+                    // ui.label("Third-party mod integration tool for Deep Rock Galactic.");
+                    ui.label(
+                        "Fork of mint that - among other small changes - omits\n\
+                        the \"[MODDED]\" prefix from the public lobby name.
+                        "
+                    );
                     ui.add_space(10.);
-                    ui.label("This fork removes the \"[MODDED]\" prefix from the public lobby name.");
+                    ui.hyperlink_to("Changelog", "https://github.com/Strappazzon/drg-mint-notag/blob/-/CHANGELOG.md");
+                    ui.hyperlink_to("License", "https://github.com/Strappazzon/drg-mint-notag/blob/-/LICENSE.txt");
+                    ui.hyperlink_to("GitHub", "https://github.com/Strappazzon/drg-mint-notag");
+                    ui.add_space(10.);
+                    // https://github.com/emilk/egui/discussions/1495#discussioncomment-2571140
                     ui.horizontal(|ui| {
                         ui.spacing_mut().item_spacing.x = 0.0;
-                        ui.label("For more information about other changes, see the ");
-                        ui.hyperlink_to("README", "https://github.com/Strappazzon/drg-mint-notag/blob/master/.github/README.md");
+                        ui.label("Application icon from ");
+                        ui.hyperlink_to("Icons8", "https://icons8.com/icon/6zZTdWRZoWil/rock");
                         ui.label(".");
                     });
                     ui.add_space(10.);
