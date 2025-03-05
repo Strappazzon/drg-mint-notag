@@ -7,7 +7,7 @@ mod toggle_switch;
 //#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // hide console window on Windows in release
 
 use std::collections::{BTreeMap, BTreeSet};
-use std::time::{Duration, SystemTime};
+use std::time::{SystemTime};
 use std::{
     collections::{HashMap, HashSet},
     ops::DerefMut,
