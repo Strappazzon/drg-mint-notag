@@ -1,0 +1,37 @@
+name: Documentation Change
+description: Request an update to the documentation.
+
+labels:
+  - "documentation"
+
+assignees:
+  - Strappazzon
+
+body:
+  - type: markdown
+    attributes:
+      value: >2
+        **NOTE:** If you are reporting a security issue, read the
+        [Security Policy](https://github.com/Strappazzon/.github/blob/-/SECURITY.md) instead of opening a public ticket.
+
+
+  - type: markdown
+    attributes:
+      value: Read the [Contributing Guidelines](https://github.com/Strappazzon/drg-mint-notag/blob/-/.github/CONTRIBUTING.md) before opening a ticket.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: What can be clarified or further explained.
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: coc
+    attributes:
+      label: Code of Conduct
+      description: By submitting this issue, you agree to the [Code of Conduct](https://github.com/Strappazzon/.github/blob/-/CODE_OF_CONDUCT.md).
+      options:
+        - label: I agree to follow the Code of Conduct.
+          required: true
