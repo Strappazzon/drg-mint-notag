@@ -1,0 +1,37 @@
+{
+	"[rust]": {
+		"editor.insertSpaces": true,
+		"editor.tabSize": 4,
+		"files.eol": "\n"
+	},
+	"[scminput]": {
+		"editor.rulers": [
+			70
+		]
+	},
+	"[toml][yaml]": {
+		"editor.insertSpaces": true,
+		"editor.tabSize": 2,
+		"files.eol": "\n"
+	},
+	"editor.detectIndentation": false,
+	"editor.rulers": [],
+	"explorer.fileNesting.patterns": {
+		"Cargo.toml": "Cargo.lock"
+	},
+	"files.exclude": {
+		"target": true
+	},
+	"files.insertFinalNewline": true,
+	"files.readonlyInclude": {
+		"**/Cargo.lock": true,
+		"**/LICENSE*": true
+	},
+	"files.trimFinalNewlines": true,
+	"git.inputValidation": true,
+	"git.inputValidationLength": 70,
+	"git.inputValidationSubjectLength": 70,
+	"yaml.schemas": {
+		"https://json.schemastore.org/github-issue-config.json": ".github/ISSUE_TEMPLATE/config.yml"
+	}
+}

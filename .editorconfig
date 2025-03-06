@@ -1,0 +1,16 @@
+root = true
+
+[*]
+end_of_line = lf
+indent_style = space
+insert_final_newline = true
+
+[*.json]
+indent_style = tab
+tab_width = 4
+
+[*.rs]
+indent_size = 4
+
+[*.{toml,yml}]
+indent_size = 2
