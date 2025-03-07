@@ -335,7 +335,7 @@ impl App {
                     match required_status {
                         RequiredStatus::RequiredByAll => {
                             mk_searchable_modio_tag(
-                                "RequiredByAll",
+                                "R",
                                 ui,
                                 Some(egui::Color32::LIGHT_RED),
                                 Some("All lobby members must use this mod for it to work correctly.",),
