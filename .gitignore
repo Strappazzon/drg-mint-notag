@@ -1,2 +1,6 @@
-/target
+# Build output
 /hook/target
+/target
+
+# Windows
+[Dd]esktop.ini
