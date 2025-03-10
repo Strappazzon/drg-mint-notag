@@ -874,13 +874,16 @@ impl App {
                 .resizable(false)
                 .show(ctx, |ui| {
                     egui::Grid::new("grid").num_columns(2).show(ui, |ui| {
+                        ui.heading("Game data");
+                        ui.end_row();
+
                         let mut job = LayoutJob::default();
                         job.append(
-                            "DRG pak",
+                            "pak directory:",
                             0.0,
                             TextFormat {
                                 color: ui.visuals().text_color(),
-                                underline: Stroke::new(1.0, ui.visuals().text_color()),
+                                underline: Stroke::new(0.8, ui.visuals().text_color()),
                                 ..Default::default()
                             },
                         );
@@ -893,7 +896,7 @@ impl App {
                                 egui::TextEdit::singleline(
                                     &mut window.drg_pak_path
                                 )
-                                .desired_width(200.0),
+                                .desired_width(300.),
                             );
                             if res.changed() {
                                 window.drg_pak_path_err = None;
@@ -913,6 +916,12 @@ impl App {
                         });
                         ui.end_row();
 
+                        ui.add_space(1.);
+                        ui.end_row();
+
+                        ui.heading("App data");
+                        ui.end_row();
+
                         let config_dir = self.state.project_dirs.config_dir();
                         ui.label("Config directory:");
                         if ui.link(config_dir.display().to_string()).clicked() {
@@ -927,13 +936,16 @@ impl App {
                         }
                         ui.end_row();
 
-                        ui.label("Mod providers:");
+                        ui.add_space(1.);
+                        ui.end_row();
+
+                        ui.heading("Mod providers");
                         ui.end_row();
 
                         for provider_factory in ModStore::get_provider_factories() {
                             ui.label(provider_factory.id);
-                            if ui.add_enabled(!provider_factory.parameters.is_empty(), egui::Button::new("⚙"))
-                                    .on_hover_text(format!("Open \"{}\" settings.", provider_factory.id))
+                            if ui.add_enabled(!provider_factory.parameters.is_empty(), egui::Button::new(" ⚙ "))
+                                    .on_hover_text(format!("Open \"{}\" provider settings.", provider_factory.id))
                                     .clicked() {
                                 self.window_provider_parameters = Some(
                                     WindowProviderParameters::new(provider_factory, &self.state),
