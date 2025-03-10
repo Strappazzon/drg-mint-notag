@@ -51,9 +51,9 @@ const APP_ICON: &[u8] = include_bytes!("../../assets/icon-gui.ico");
 pub fn gui(args: Option<Vec<String>>) -> Result<()> {
     // Decode ICO file
     let app_ico = image::load_from_memory(APP_ICON).expect("failed to load app icon");
-    let (width, height) = app_ico.dimensions();
+    let (_width, _height) = app_ico.dimensions();
     let app_ico_data = app_ico.into_rgba8().into_raw();
-
+    // Set icon
     let options = eframe::NativeOptions {
         centered: true,
         initial_window_size: Some(egui::vec2(900.0, 500.0)),
@@ -721,9 +721,10 @@ impl App {
     }
 
     fn show_update_window(&mut self, ctx: &egui::Context) {
-        if let (Some(update), Some(update_time)) =
+        if let (Some(update), Some(_update_time)) =
             (self.available_update.as_ref(), self.show_update_time)
         {
+            // Backdrop
             egui::Area::new("available-update-overlay")
                 .movable(false)
                 .fixed_pos(Pos2::ZERO)
@@ -735,6 +736,7 @@ impl App {
                             ui.allocate_space(ui.available_size());
                         })
                 });
+            // Actual update window
             egui::Window::new(format!("Update Available: {}", update.tag_name))
                 .collapsible(false)
                 .anchor(Align2::CENTER_CENTER, Vec2::ZERO)
@@ -981,8 +983,7 @@ impl App {
     }
 
     fn show_about(&mut self, ctx: &egui::Context) {
-        // if let Some(_) = self.about_window {
-        if let Some(window) = &mut self.about_window {
+        if let Some(_) = &mut self.about_window {
             let mut open = true;
 
             egui::Window::new("About")
