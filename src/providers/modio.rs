@@ -16,7 +16,7 @@ use super::{
 };
 
 lazy_static::lazy_static! {
-    static ref RE_MOD: regex::Regex = regex::Regex::new("^https://mod.io/g/drg/m/(?P<name_id>[^/#]+)(:?#(?P<mod_id>\\d+)(:?/(?P<modfile_id>\\d+))?)?$").unwrap();
+    static ref RE_MOD: regex::Regex = regex::Regex::new("^https://mod.io/g/drg/m/(?P<name_id>[^/#]+)(?:#(?:(?P<mod_id>\\d+)(?:/(?P<modfile_id>\\d+))?|[a-zA-Z]+))?$").unwrap();
 }
 
 const MODIO_DRG_ID: u32 = 2475;
