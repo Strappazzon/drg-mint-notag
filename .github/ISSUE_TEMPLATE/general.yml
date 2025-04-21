@@ -25,10 +25,14 @@ body:
       required: true
 
   - type: checkboxes
-    id: coc
+    id: checks
     attributes:
-      label: Code of Conduct
-      description: By submitting this issue, you agree to the [Code of Conduct](https://github.com/Strappazzon/.github/blob/-/CODE_OF_CONDUCT.md).
+      label: Checklist
+      description: Making sure you have read everything before submitting your ticket.
       options:
-        - label: I agree to follow the Code of Conduct.
+        - label: I agree to follow the [Code of Conduct](https://github.com/Strappazzon/.github/blob/-/CODE_OF_CONDUCT.md).
+          required: true
+        - label: I have read the [Contributing Guidelines](https://github.com/Strappazzon/drg-mint-notag/blob/-/.github/CONTRIBUTING.md).
+          required: true
+        - label: I have read the [Support Policy](https://github.com/Strappazzon/drg-mint-notag/blob/master/SUPPORT.md#support-policy).
           required: true

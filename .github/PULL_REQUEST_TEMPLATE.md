@@ -14,7 +14,7 @@ Closes: #none
 
 <!-- Describe your Pull Request -->
 
-# Check list
+# Checklist
 
 <!--
   Add an x in each box below.
