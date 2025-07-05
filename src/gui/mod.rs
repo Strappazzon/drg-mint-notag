@@ -120,6 +120,7 @@ pub struct App {
     lints_toggle_window: Option<WindowLintsToggle>,
     lint_options: LintOptions,
     cache: CommonMarkCache,
+    confirm_remove: Option<usize>,
 }
 
 #[derive(Default)]
@@ -180,6 +181,7 @@ impl App {
             lints_toggle_window: None,
             lint_options: LintOptions::default(),
             cache: Default::default(),
+            confirm_remove: None,
         })
     }
 
@@ -604,7 +606,7 @@ impl App {
                             .on_hover_text_at_pointer("Delete mod")
                             .clicked()
                         {
-                            ctx.btn_remove = Some(state.index);
+                            self.confirm_remove = Some(state.index);
                         };
                     });
 
@@ -675,9 +677,26 @@ impl App {
                 ctx.needs_save = true;
             }
 
-            if let Some(remove) = ctx.btn_remove {
-                profile.mods.remove(remove);
-                ctx.needs_save = true;
+            if let Some(index) = self.confirm_remove {
+                egui::Window::new("Delete mod")
+                    .collapsible(false)
+                    .resizable(false)
+                    .show(ui.ctx(), |ui| {
+                        ui.add_space(10.);
+                        ui.label("Are you sure you want to delete this mod from your load order? This cannot be undone.");
+                        ui.add_space(10.);
+
+                        ui.with_layout(egui::Layout::right_to_left(Align::TOP), |ui| {
+                            if ui.button("Cancel").clicked() {
+                                self.confirm_remove = None;
+                            }
+                            if ui.button("Delete").clicked() {
+                                profile.mods.remove(index);
+                                ctx.needs_save = true;
+                                self.confirm_remove = None;
+                            }
+                        });
+                    });
             }
         };
 
@@ -1009,8 +1028,7 @@ impl App {
                     // ui.label("Third-party mod integration tool for Deep Rock Galactic.");
                     ui.label(
                         "Fork of mint that - among other small changes - omits\n\
-                        the \"[MODDED]\" prefix from the public lobby name.
-                        "
+                        the \"[MODDED]\" prefix from the public lobby name."
                     );
                     ui.add_space(10.);
                     ui.hyperlink_to("Changelog", "https://github.com/Strappazzon/drg-mint-notag/blob/-/CHANGELOG.md");
