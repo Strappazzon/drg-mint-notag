@@ -3235,7 +3235,7 @@ dependencies = [
 [[package]]
 name = "repak"
 version = "0.1.7"
-source = "git+https://github.com/trumank/repak.git#a006d9ed6f021687a87b8b2ff9d66083d019824c"
+source = "git+https://github.com/trumank/repak.git?rev=a749449f8c82afc2f80fbb387b980e74bbe3ce43#a749449f8c82afc2f80fbb387b980e74bbe3ce43"
 dependencies = [
  "aes",
  "byteorder",
