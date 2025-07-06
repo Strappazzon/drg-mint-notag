@@ -1591,15 +1591,22 @@ impl eframe::App for App {
                         && self.state.config.drg_pak_path.is_some(),
                     |ui| {
                         if let Some(args) = &self.args {
-                            if ui.button("Launch game").on_hover_ui(|ui| for arg in args {
-                                ui.label(arg);
-                            }).clicked() {
+                            if ui
+                                .button("Launch game")
+                                .on_hover_ui(|ui| {
+                                    for arg in args {
+                                        ui.label(arg);
+                                    }
+                                })
+                                .clicked()
+                            {
                                 let args = args.clone();
                                 tokio::task::spawn_blocking(move || {
                                     let mut iter = args.iter();
-                                    std::process::Command::new(
-                                        iter.next().unwrap(),
-                                        ).args(iter).spawn().unwrap();
+                                    std::process::Command::new(iter.next().unwrap())
+                                        .args(iter)
+                                        .spawn()
+                                        .unwrap();
                                 });
                             }
                         }
@@ -1617,9 +1624,11 @@ impl eframe::App for App {
 
                             let mut mods = Vec::new();
                             let active_profile = self.state.mod_data.active_profile.clone();
-                            self.state.mod_data.for_each_enabled_mod(&active_profile, |mc| {
-                                mods.push(mc.spec.clone());
-                            });
+                            self.state
+                                .mod_data
+                                .for_each_enabled_mod(&active_profile, |mc| {
+                                    mods.push(mc.spec.clone());
+                                });
 
                             if button.clicked() {
                                 self.last_action_status = LastActionStatus::Idle;
@@ -1649,13 +1658,19 @@ impl eframe::App for App {
                                 if let Some(pak_path) = &self.state.config.drg_pak_path {
                                     let mut mods = HashSet::default();
                                     let active_profile = self.state.mod_data.active_profile.clone();
-                                    self.state.mod_data.for_each_enabled_mod(&active_profile, |mc| {
-                                        if let Some(modio_id) = self.state.store
-                                            .get_mod_info(&mc.spec)
-                                            .and_then(|i| i.modio_id) {
+                                    self.state.mod_data.for_each_enabled_mod(
+                                        &active_profile,
+                                        |mc| {
+                                            if let Some(modio_id) = self
+                                                .state
+                                                .store
+                                                .get_mod_info(&mc.spec)
+                                                .and_then(|i| i.modio_id)
+                                            {
                                                 mods.insert(modio_id);
-                                        }
-                                    });
+                                            }
+                                        },
+                                    );
 
                                     debug!("uninstalling mods: pak_path = {}", pak_path.display());
                                     match uninstall(pak_path, mods) {
@@ -1664,8 +1679,9 @@ impl eframe::App for App {
                                             LastActionStatus::Success("Successfully uninstalled mods.".to_string());
                                         },
                                         Err(e) => {
-                                            self.last_action_status =
-                                            LastActionStatus::Failure(format!("Failed to uninstall mods: {e}"))
+                                            self.last_action_status = LastActionStatus::Failure(
+                                                format!("Failed to uninstall mods: {e}"),
+                                            )
                                         }
                                     }
                                 }
@@ -1680,13 +1696,7 @@ impl eframe::App for App {
                             )
                             .clicked()
                         {
-                            let mut mods = Vec::new();
-                            let active_profile = self.state.mod_data.active_profile.clone();
-                            self.state.mod_data.for_each_mod(&active_profile, |mc| {
-                                mods.push(mc.spec.clone());
-                            });
-
-                            message::UpdateCache::send(self, mods);
+                            message::UpdateCache::send(self);
                         }
                     },
                 );
@@ -1705,9 +1715,11 @@ impl eframe::App for App {
                 if ui.button("Lint mods").on_hover_text("Lint mods in the current profile.").clicked() {
                     let mut mods = Vec::new();
                     let active_profile = self.state.mod_data.active_profile.clone();
-                    self.state.mod_data.for_each_enabled_mod(&active_profile, |mc| {
-                        mods.push(mc.spec.clone());
-                    });
+                    self.state
+                        .mod_data
+                        .for_each_enabled_mod(&active_profile, |mc| {
+                            mods.push(mc.spec.clone());
+                        });
                     self.lints_toggle_window = Some(WindowLintsToggle { mods });
                 }
                 if ui.button("⚙").on_hover_text("Open mint-notag settings.").clicked() {
@@ -1736,19 +1748,19 @@ impl eframe::App for App {
                             ui.label(
                                 egui::RichText::new(" SUCCESS ")
                                     .color(Color32::BLACK)
-                                    .background_color(Color32::LIGHT_GREEN)
+                                    .background_color(Color32::LIGHT_GREEN),
                             );
                             ui.label(msg);
-                        },
+                        }
                         LastActionStatus::Failure(msg) => {
                             ui.label(
                                 egui::RichText::new(" FAILED ")
                                     .color(Color32::BLACK)
-                                    .background_color(Color32::LIGHT_RED)
+                                    .background_color(Color32::LIGHT_RED),
                             );
                             ui.label(msg);
-                        },
-                        _ => {},
+                        }
+                        _ => {}
                     }
                 });
             });
