@@ -1690,10 +1690,7 @@ impl eframe::App for App {
 
                         if ui
                             .button("Update cache")
-                            .on_hover_text(
-                                "Checks for updates for all mods and updates local cache.\n\
-                                This can take a long time for large mod lists due to strict mod.io rate-limiting.",
-                            )
+                            .on_hover_text("Checks for updates for all mods and updates local cache.")
                             .clicked()
                         {
                             message::UpdateCache::send(self);
