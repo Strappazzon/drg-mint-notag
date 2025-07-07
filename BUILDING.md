@@ -35,4 +35,4 @@ After setting up all the requirements:
 - Run `cargo build` to compile a development build
   - The output will be inside `target/debug`
 - Run `cargo build --release` to compile a production build
-  - The output will be inside `target/dist`
+  - The output will be inside `target/release`
