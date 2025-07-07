@@ -4,6 +4,12 @@
 
 ## [Unreleased] - ReleaseDate
 
+## [0.2.14] - 2025-07-07
+
+- Optimize cache updates
+  - Existing caches will not have the last updated timestamp and **must do a full update once**
+- Add confirmation dialog before deleting a mod from the load order
+
 ## [0.2.13] - 2025-04-16
 
 - Fix error when pasting mod.io URL with text fragment
@@ -57,7 +63,8 @@
 - Fix including same asset paths with different casings causing Unreal Engine to load neither ([#29](https://github.com/trumank/drg-mod-integration/issues/29))
 
 <!-- next-url -->
-[Unreleased]: https://github.com/Strappazzon/drg-mint-notag/compare/v0.2.13...HEAD
+[Unreleased]: https://github.com/Strappazzon/drg-mint-notag/compare/v0.2.14...HEAD
+[0.2.14]: https://github.com/Strappazzon/drg-mint-notag/compare/v0.2.13...v0.2.14
 [0.2.13]: https://github.com/Strappazzon/drg-mint-notag/compare/v0.2.12...v0.2.13
 [0.2.12]: https://github.com/Strappazzon/drg-mint-notag/compare/v0.2.11...v0.2.12
 [0.2.11]: https://github.com/Strappazzon/drg-mint-notag/compare/832f7db...v0.2.11
