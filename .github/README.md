@@ -40,14 +40,16 @@ For more information on mint usage see the [original README](https://github.com/
 
 The latest release is available on the [Releases page](https://github.com/Strappazzon/drg-mint-notag/releases/latest).
 
-## Linux support
+### Linux Support
 
-Linux support has challenges with mint. To launch the program use the following commands:
-```
+To launch the program on Linux distros, use the following commands:
+
+```sh
 export LD_LIBRARY_PATH=~/opt/lib:$LD_LIBRARY_PATH
 env -u WAYLAND_DISPLAY ./drg_mod_integration
+
+# Credits to https://github.com/trumank/mint/issues/299#issuecomment-3401198284
 ```
-[(credit)](https://github.com/trumank/mint/issues/299#issuecomment-3401198284)
 
 ## Contributing
 
