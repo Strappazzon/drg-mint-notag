@@ -456,7 +456,7 @@ impl App {
                                     egui::RichText::new("\u{26A0}")
                                         .color(ui.visuals().warn_fg_color),
                                 )
-                                .on_hover_text_at_pointer("remove duplicate")
+                                .on_hover_text_at_pointer("Remove duplicate mod")
                                 .clicked()
                         {
                             ctx.btn_remove = Some(state.index);
@@ -1839,11 +1839,11 @@ impl eframe::App for App {
             });
 
             let profile = self.state.mod_data.active_profile.clone();
-            self.ui_profile(ui, &profile);
 
-            // TODO: actually implement mod groups.
-            if let Some(search_string) = &mut self.search_string {
-                let lower = search_string.to_lowercase();
+            ui.horizontal(|ui| {
+                // TODO: actually implement mod groups.
+                let search = self.search_string.get_or_insert_with(String::new);
+                let lower = search.to_lowercase();
                 let any_matches = self.state.mod_data.any_mod(&profile, |mc, _| {
                     self.state
                         .store
@@ -1852,23 +1852,22 @@ impl eframe::App for App {
                         .unwrap_or(false)
                 });
 
-                let mut text_edit = egui::TextEdit::singleline(search_string);
+                let mut search_string = egui::TextEdit::singleline(search)
+                    .hint_text("Search installed mods...");
+
                 if !any_matches {
-                    text_edit = text_edit.text_color(ui.visuals().error_fg_color);
+                    search_string = search_string.text_color(ui.visuals().error_fg_color);
                 }
-                let res = ui
-                    .child_ui(ui.max_rect(), egui::Layout::bottom_up(Align::RIGHT))
-                    .add(text_edit);
+
+                let res = ui.add_sized([ui.available_width(), ui.spacing().interact_size.y], search_string);
+
                 if res.changed() {
                     self.scroll_to_match = true;
                 }
-                if res.lost_focus() {
-                    self.search_string = None;
-                    self.scroll_to_match = false;
-                } else if !res.has_focus() {
-                    res.request_focus();
-                }
-            }
+            });
+            ui.add_space(5.);
+
+            self.ui_profile(ui, &profile);
 
             ctx.input(|i| {
                 if !i.raw.dropped_files.is_empty()
@@ -1899,12 +1898,6 @@ impl eframe::App for App {
                             {
                                 self.resolve_mod = s.trim().to_string();
                                 message::ResolveMods::send(self, ctx, self.parse_mods(), false);
-                            }
-                        }
-                        egui::Event::Text(text) => {
-                            if ctx.memory(|m| m.focus().is_none()) {
-                                self.search_string = Some(text.to_string());
-                                self.scroll_to_match = true;
                             }
                         }
                         egui::Event::Key { key, modifiers, pressed, .. } => {
