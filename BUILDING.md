@@ -19,7 +19,7 @@ After setting up all the requirements:
 - Add MSVC tools to Path:
 
   ```ps1
-  [Environment]::SetEnvironmentVariable("PATH", $env:PATH + ";C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.43.34808\bin\Hostx64\x64", [EnvironmentVariableTarget]::User)
+  [Environment]::SetEnvironmentVariable("PATH", $env:PATH + ";C:\Program Files\Microsoft Visual Studio\18\Community\VC\Tools\MSVC\14.50.35717\bin\Hostx64\x64", [EnvironmentVariableTarget]::User)
   ```
 
 - Install [Rust toolchain](https://rust-lang.github.io/rustup/concepts/toolchains.html):
