@@ -4,6 +4,13 @@
 
 ## [Unreleased] - ReleaseDate
 
+## [0.2.15] - 2026-03-18
+
+- Made search bar always visible
+  - Search functionality was available before by typing anywhere on the UI
+- Added a sort button
+  - This will sort mods by Enabled status, Provider, then by Name
+
 ## [0.2.14] - 2025-07-07
 
 - Optimize cache updates
@@ -63,7 +70,8 @@
 - Fix including same asset paths with different casings causing Unreal Engine to load neither ([#29](https://github.com/trumank/drg-mod-integration/issues/29))
 
 <!-- next-url -->
-[Unreleased]: https://github.com/Strappazzon/drg-mint-notag/compare/v0.2.14...HEAD
+[Unreleased]: https://github.com/Strappazzon/drg-mint-notag/compare/v0.2.15...HEAD
+[0.2.15]: https://github.com/Strappazzon/drg-mint-notag/compare/v0.2.14...v0.2.15
 [0.2.14]: https://github.com/Strappazzon/drg-mint-notag/compare/v0.2.13...v0.2.14
 [0.2.13]: https://github.com/Strappazzon/drg-mint-notag/compare/v0.2.12...v0.2.13
 [0.2.12]: https://github.com/Strappazzon/drg-mint-notag/compare/v0.2.11...v0.2.12
