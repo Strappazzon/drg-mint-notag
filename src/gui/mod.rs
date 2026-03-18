@@ -6,6 +6,7 @@ mod toggle_switch;
 
 //#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // hide console window on Windows in release
 
+use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet};
 use std::time::{SystemTime};
 use std::{
@@ -1841,7 +1842,50 @@ impl eframe::App for App {
             let profile = self.state.mod_data.active_profile.clone();
 
             ui.horizontal(|ui| {
-                // TODO: actually implement mod groups.
+                if ui
+                    .button("Sort mods")
+                    .on_hover_text("Sort mods in the current profile.\nThis will sort mods by Enabled status, Provider, then by Name.")
+                    .clicked()
+                {
+                    let profile = self.state.mod_data.active_profile.clone();
+                    let ModData { profiles, .. } = self.state.mod_data.deref_mut().deref_mut();
+
+                    if let Some(active_profile) = profiles.get_mut(&profile) {
+                        active_profile.mods.sort_by(|a, b| {
+                            if matches!(a, ModOrGroup::Group { .. })
+                                || matches!(b, ModOrGroup::Group { .. })
+                            {
+                                unimplemented!("Groups in sorting not implemented");
+                            }
+
+                            let ModOrGroup::Individual(mc_a) = a else {
+                                debug!("Item is not Individual \n{:?}", a);
+                                return Ordering::Equal;
+                            };
+                            let ModOrGroup::Individual(mc_b) = b else {
+                                debug!("Item is not Individual \n{:?}", b);
+                                return Ordering::Equal;
+                            };
+
+                            let Some(info_a) = self.state.store.get_mod_info(&mc_a.spec) else {
+                                debug!("Failed to get mod info for \n{:?}", mc_a);
+                                return Ordering::Equal;
+                            };
+                            let Some(info_b) = self.state.store.get_mod_info(&mc_b.spec) else {
+                                debug!("Failed to get mod info for \n{:?}", mc_b);
+                                return Ordering::Equal;
+                            };
+
+                            mc_b.enabled
+                                .cmp(&mc_a.enabled)
+                                .then(info_a.provider.cmp(info_b.provider))
+                                .then(info_a.name.to_lowercase().cmp(&info_b.name.to_lowercase()))
+                        });
+                    }
+                }
+
+                ui.separator();
+
                 let search = self.search_string.get_or_insert_with(String::new);
                 let lower = search.to_lowercase();
                 let any_matches = self.state.mod_data.any_mod(&profile, |mc, _| {
