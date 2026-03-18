@@ -1847,7 +1847,6 @@ impl eframe::App for App {
                     .on_hover_text("Sort mods in the current profile.\nThis will sort mods by Enabled status, Provider, then by Name.")
                     .clicked()
                 {
-                    let profile = self.state.mod_data.active_profile.clone();
                     let ModData { profiles, .. } = self.state.mod_data.deref_mut().deref_mut();
 
                     if let Some(active_profile) = profiles.get_mut(&profile) {
