@@ -44,7 +44,7 @@ dialoguer = "0.11.0"
 directories = "5.0.1"
 eframe = "0.24.0"
 egui = "0.24.0"
-egui_commonmark = "0.10.0"
+egui_commonmark = { version = "0.10.0", features = ["fetch"] }
 egui_dnd = { git = "https://github.com/lucasmerlin/egui_dnd.git" }
 futures = "0.3.30"
 hex = "0.4.3"
