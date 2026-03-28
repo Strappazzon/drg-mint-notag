@@ -5,7 +5,6 @@ use std::path::PathBuf;
 
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
-use mint_lib::DRGInstallation;
 use tracing::{debug, info};
 use tracing_appender::non_blocking::WorkerGuard;
 use tracing_subscriber::filter;
@@ -240,18 +239,17 @@ fn init_provider(state: &mut State, url: String, factory: &ProviderFactory) -> R
     state.store.add_provider(factory, params)
 }
 
-async fn action_integrate(dirs: Dirs, action: ActionIntegrate) -> Result<()> {
-    let game_pak_path = action
-        .fsd_pak
-        .or_else(|| {
-            DRGInstallation::find()
-                .as_ref()
-                .map(DRGInstallation::main_pak)
-        })
-        .context("Could not find DRG pak file, please specify manually with the --fsd_pak flag")?;
-    debug!(?game_pak_path);
+fn get_pak_path(state: &State, arg: &Option<PathBuf>) -> Result<PathBuf> {
+    arg.as_ref()
+        .or_else(|| state.config.drg_pak_path.as_ref())
+        .cloned()
+        .context("Could not find DRG pak file, please specify manually with the --fsd_pak flag")
+}
 
+async fn action_integrate(dirs: Dirs, action: ActionIntegrate) -> Result<()> {
     let mut state = State::init(dirs)?;
+    let game_pak_path = get_pak_path(&state, &action.fsd_pak)?;
+    debug!(?game_pak_path);
 
     let mod_specs = action
         .mods
@@ -270,17 +268,9 @@ async fn action_integrate(dirs: Dirs, action: ActionIntegrate) -> Result<()> {
 }
 
 async fn action_integrate_profile(dirs: Dirs, action: ActionIntegrateProfile) -> Result<()> {
-    let game_pak_path = action
-        .fsd_pak
-        .or_else(|| {
-            DRGInstallation::find()
-                .as_ref()
-                .map(DRGInstallation::main_pak)
-        })
-        .context("Could not find DRG pak file, please specify manually with the --fsd_pak flag")?;
-    debug!(?game_pak_path);
-
     let mut state = State::init(dirs)?;
+    let game_pak_path = get_pak_path(&state, &action.fsd_pak)?;
+    debug!(?game_pak_path);
 
     let mut mods = Vec::new();
     state.mod_data.for_each_enabled_mod(&action.profile, |mc| {
@@ -298,17 +288,9 @@ async fn action_integrate_profile(dirs: Dirs, action: ActionIntegrateProfile) ->
 }
 
 async fn action_lint(dirs: Dirs, action: ActionLint) -> Result<()> {
-    let game_pak_path = action
-        .fsd_pak
-        .or_else(|| {
-            DRGInstallation::find()
-                .as_ref()
-                .map(DRGInstallation::main_pak)
-        })
-        .context("Could not find DRG pak file, please specify manually with the --fsd_pak flag")?;
-    debug!(?game_pak_path);
-
     let mut state = State::init(dirs)?;
+    let game_pak_path = get_pak_path(&state, &action.fsd_pak)?;
+    debug!(?game_pak_path);
 
     let mut mods = Vec::new();
     state.mod_data.for_each_mod(&action.profile, |mc| {
