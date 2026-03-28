@@ -7,7 +7,7 @@ mod toggle_switch;
 //#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // hide console window on Windows in release
 
 use std::collections::{BTreeMap, BTreeSet};
-use std::time::{Duration, SystemTime};
+use std::time::{SystemTime};
 use std::{
     collections::{HashMap, HashSet},
     ops::DerefMut,
@@ -758,11 +758,9 @@ impl App {
     }
 
     fn show_update_window(&mut self, ctx: &egui::Context) {
-        if let (Some(update), Some(update_time)) =
+        if let (Some(update), Some(_)) =
             (self.available_update.as_ref(), self.show_update_time)
         {
-            let now = SystemTime::now();
-            let wait_time = Duration::from_secs(10);
             egui::Area::new("available-update-overlay")
                 .movable(false)
                 .fixed_pos(Pos2::ZERO)
@@ -827,13 +825,8 @@ impl App {
                                 ));
                             }
 
-                            let elapsed = now.duration_since(update_time).unwrap_or_default();
-                            if elapsed > wait_time {
-                                if ui.button("Close").clicked() {
-                                    self.show_update_time = None;
-                                }
-                            } else {
-                                ui.spinner();
+                            if ui.button("Close").clicked() {
+                                self.show_update_time = None;
                             }
                         });
                     });
