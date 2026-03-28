@@ -1953,6 +1953,11 @@ impl eframe::App for App {
                                 self.scroll_to_match = true;
                             }
                         }
+                        egui::Event::Key { key, modifiers, pressed, .. } => {
+                            if key == &egui::Key::Q && *pressed && modifiers.ctrl {
+                                std::process::exit(0);
+                            }
+                        }
                         _ => {}
                     }
                 }
