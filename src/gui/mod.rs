@@ -87,6 +87,8 @@ impl GuiTheme {
     }
 }
 
+const FOLDER_LOGO_PNG: &[u8] = include_bytes!("../../assets/folder.png");
+const HTTP_LOGO_PNG: &[u8] = include_bytes!("../../assets/globe.png");
 const MODIO_LOGO_PNG: &[u8] = include_bytes!("../../assets/modio-cog-blue.png");
 
 pub struct App {
@@ -106,6 +108,8 @@ pub struct App {
     search_string: Option<String>,
     scroll_to_match: bool,
     settings_window: Option<WindowSettings>,
+    folder_texture_handle: Option<egui::TextureHandle>,
+    http_texture_handle: Option<egui::TextureHandle>,
     modio_texture_handle: Option<egui::TextureHandle>,
     last_action_status: LastActionStatus,
     available_update: Option<GitHubRelease>,
@@ -168,6 +172,8 @@ impl App {
             search_string: Default::default(),
             scroll_to_match: false,
             settings_window: None,
+            folder_texture_handle: None,
+            http_texture_handle: None,
             modio_texture_handle: None,
             last_action_status: LastActionStatus::Idle,
             available_update: None,
@@ -444,8 +450,8 @@ impl App {
                         });
 
                     if ui
-                        .button("📋")
-                        .on_hover_text_at_pointer("copy URL")
+                        .button("\u{1F4CB}")
+                        .on_hover_text_at_pointer("Copy URL")
                         .clicked()
                     {
                         ui.output_mut(|o| o.copied_text = mc.spec.url.to_owned());
@@ -461,7 +467,7 @@ impl App {
                                     egui::RichText::new("\u{26A0}")
                                         .color(ui.visuals().warn_fg_color),
                                 )
-                                .on_hover_text_at_pointer("remove duplicate")
+                                .on_hover_text_at_pointer("Remove duplicate")
                                 .clicked()
                         {
                             ctx.btn_remove = Some(state.index);
@@ -526,21 +532,53 @@ impl App {
                                         pixels.as_slice(),
                                     );
 
-                                    ui.ctx()
-                                        .load_texture("modio-logo", image, Default::default())
+                                    ui.ctx().load_texture("modio-logo", image, Default::default())
                                 });
-                            let mut img =
-                                egui::Image::new(texture).fit_to_exact_size([16.0, 16.0].into());
+                            let mut img = egui::Image::new(texture).fit_to_exact_size([16.0, 16.0].into());
                             if !mc.enabled {
                                 img = img.tint(Color32::LIGHT_RED);
                             }
                             ui.add(img);
                         }
                         "http" => {
-                            ui.label("🌐");
+                            let texture: &egui::TextureHandle =
+                                self.http_texture_handle.get_or_insert_with(|| {
+                                    let image = image::load_from_memory(HTTP_LOGO_PNG).unwrap();
+                                    let size = [image.width() as _, image.height() as _];
+                                    let image_buffer = image.to_rgba8();
+                                    let pixels = image_buffer.as_flat_samples();
+                                    let image = egui::ColorImage::from_rgba_unmultiplied(
+                                        size,
+                                        pixels.as_slice(),
+                                    );
+
+                                    ui.ctx().load_texture("http-logo", image, Default::default())
+                                });
+                            let mut img = egui::Image::new(texture).fit_to_exact_size([16.0, 16.0].into());
+                            if !mc.enabled {
+                                img = img.tint(Color32::LIGHT_RED);
+                            }
+                            ui.add(img);
                         }
                         "file" => {
-                            ui.label("📁");
+                            let texture: &egui::TextureHandle =
+                                self.folder_texture_handle.get_or_insert_with(|| {
+                                    let image = image::load_from_memory(FOLDER_LOGO_PNG).unwrap();
+                                    let size = [image.width() as _, image.height() as _];
+                                    let image_buffer = image.to_rgba8();
+                                    let pixels = image_buffer.as_flat_samples();
+                                    let image = egui::ColorImage::from_rgba_unmultiplied(
+                                        size,
+                                        pixels.as_slice(),
+                                    );
+
+                                    ui.ctx().load_texture("folder-logo", image, Default::default())
+                                });
+                            let mut img = egui::Image::new(texture).fit_to_exact_size([16.0, 16.0].into());
+                            if !mc.enabled {
+                                img = img.tint(Color32::LIGHT_RED);
+                            }
+                            ui.add(img);
                         }
                         _ => unimplemented!("unimplemented provider kind"),
                     }
@@ -556,7 +594,7 @@ impl App {
                     });
                 } else {
                     if ui
-                        .button("📋")
+                        .button("\u{1F4CB}")
                         .on_hover_text_at_pointer("Copy URL")
                         .clicked()
                     {
@@ -572,7 +610,7 @@ impl App {
                         ui.visuals_mut().widgets.hovered.weak_bg_fill = colors::DARK_RED;
                         ui.visuals_mut().widgets.active.weak_bg_fill = colors::DARKER_RED;
                         if ui
-                            .add(Button::new(" 🗑 "))
+                            .add(Button::new("\u{1F5D1}"))
                             .on_hover_text_at_pointer("Delete mod")
                             .clicked()
                         {
@@ -633,7 +671,7 @@ impl App {
                     frame.show(ui, |ui| {
                         ui.horizontal(|ui| {
                             handle.ui(ui, |ui| {
-                                ui.label("   ☰  ");
+                                ui.label("   \u{2630}  ");
                             });
 
                             ui_item(&mut ctx, ui, item, state);
@@ -657,7 +695,7 @@ impl App {
             if let Some(profile) = profiles.get_mut(profile) {
                 ui_profile(ui, profile);
             } else {
-                ui.label("no such profile");
+                ui.label("No such profile");
             }
         });
 
@@ -710,7 +748,7 @@ impl App {
                         })
                 });
             if let Some(MessageHandle { state, .. }) = &self.self_update_rid {
-                egui::Window::new("Update progress")
+                egui::Window::new("Update Progress")
                     .collapsible(false)
                     .anchor(Align2::CENTER_CENTER, Vec2::ZERO)
                     .resizable(false)
@@ -741,7 +779,7 @@ impl App {
                         });
                     });
             } else {
-                egui::Window::new(format!("Update available: {}", update.tag_name))
+                egui::Window::new(format!("Update Available: {}", update.tag_name))
                     .collapsible(false)
                     .anchor(Align2::CENTER_CENTER, Vec2::ZERO)
                     .resizable(false)
@@ -751,7 +789,7 @@ impl App {
                             .show(ui, &mut self.cache, &update.body);
                         ui.with_layout(egui::Layout::right_to_left(Align::TOP), |ui| {
                             if ui
-                                .add(egui::Button::new("Install update"))
+                                .add(egui::Button::new("Install"))
                                 .on_hover_text("Download and install the update.")
                                 .clicked()
                             {
@@ -887,10 +925,13 @@ impl App {
                 .open(&mut open)
                 .resizable(false)
                 .show(ctx, |ui| {
-                    egui::Grid::new("grid").num_columns(2).striped(true).show(ui, |ui| {
+                    egui::Grid::new("grid").num_columns(2).show(ui, |ui| {
+                        ui.heading("Game Data");
+                        ui.end_row();
+
                         let mut job = LayoutJob::default();
                         job.append(
-                            "DRG pak",
+                            "pak directory:",
                             0.0,
                             TextFormat {
                                 color: ui.visuals().text_color(),
@@ -898,13 +939,15 @@ impl App {
                                 ..Default::default()
                             },
                         );
-                        ui.label(job).on_hover_cursor(egui::CursorIcon::Help).on_hover_text("Path to FSD-WindowsNoEditor.pak (FSD-WinGDK.pak for Microsoft Store version)\nLocated inside the \"Deep Rock Galactic\" installation directory under FSD/Content/Paks.");
+                        ui.label(job).on_hover_cursor(egui::CursorIcon::Help).on_hover_text(
+                            "Path to \"FSD-WindowsNoEditor.pak\" or \"FSD-WinGDK.pak\" located inside Deep Rock Galactic installation directory under \"/FSD/Content/Paks\"."
+                        );
                         ui.horizontal(|ui| {
                             let res = ui.add(
                                 egui::TextEdit::singleline(
                                     &mut window.drg_pak_path
                                 )
-                                .desired_width(200.0),
+                                .desired_width(300.0),
                             );
                             if res.changed() {
                                 window.drg_pak_path_err = None;
@@ -912,9 +955,9 @@ impl App {
                             if is_committed(&res) {
                                 try_save = true;
                             }
-                            if ui.button("browse").clicked() {
+                            if ui.button("Browse...").clicked() {
                                 if let Some(fsd_pak) = rfd::FileDialog::new()
-                                    .add_filter("DRG Pak", &["pak"])
+                                    .add_filter("DRG pak", &["pak"])
                                     .pick_file()
                                 {
                                     window.drg_pak_path = fsd_pak.to_string_lossy().to_string();
@@ -922,6 +965,12 @@ impl App {
                                 }
                             }
                         });
+                        ui.end_row();
+
+                        ui.add_space(1.);
+                        ui.end_row();
+
+                        ui.heading("App Data");
                         ui.end_row();
 
                         let config_dir = &self.state.dirs.config_dir;
@@ -945,12 +994,19 @@ impl App {
                         }
                         ui.end_row();
 
-                        ui.label("GUI theme:");
+                        ui.add_space(1.);
+                        ui.end_row();
+
+                        ui.heading("UI Theme");
+                        ui.end_row();
+
+                        ui.label("Color scheme:");
                         ui.horizontal(|ui| {
                             ui.horizontal(|ui| {
                                 let config = &mut self.state.config;
-                                let changed = ui.selectable_value(&mut config.gui_theme, Some(GuiTheme::Light), "☀ Light").changed() ||
-                                    ui.selectable_value(&mut config.gui_theme, Some(GuiTheme::Dark), "🌙 Dark").changed() ||
+                                let changed =
+                                    ui.selectable_value(&mut config.gui_theme, Some(GuiTheme::Light), "Light").changed() ||
+                                    ui.selectable_value(&mut config.gui_theme, Some(GuiTheme::Dark), "Dark").changed() ||
                                     ui.selectable_value(&mut config.gui_theme, None, "System").changed();
                                 if changed {
                                     ctx.set_visuals(config.gui_theme.map(GuiTheme::visuals).unwrap_or_else(|| self.default_visuals.clone()));
@@ -960,12 +1016,15 @@ impl App {
                         });
                         ui.end_row();
 
-                        ui.label("Mod providers:");
+                        ui.add_space(1.);
+                        ui.end_row();
+
+                        ui.heading("Mod Providers");
                         ui.end_row();
 
                         for provider_factory in ModStore::get_provider_factories() {
                             ui.label(provider_factory.id);
-                            if ui.add_enabled(!provider_factory.parameters.is_empty(), egui::Button::new("⚙"))
+                            if ui.add_enabled(!provider_factory.parameters.is_empty(), egui::Button::new("\u{2699}"))
                                     .on_hover_text(format!("Open \"{}\" settings", provider_factory.id))
                                     .clicked() {
                                 self.window_provider_parameters = Some(
@@ -977,7 +1036,7 @@ impl App {
                     });
 
                     ui.with_layout(egui::Layout::right_to_left(Align::TOP), |ui| {
-                        if ui.add_enabled(window.drg_pak_path_err.is_none(), egui::Button::new("save")).clicked() {
+                        if ui.add_enabled(window.drg_pak_path_err.is_none(), egui::Button::new("Save")).clicked() {
                             try_save = true;
                         }
                         if let Some(error) = &window.drg_pak_path_err {
@@ -987,7 +1046,7 @@ impl App {
 
                 });
             if try_save {
-                if let Err(e) = is_drg_pak(&window.drg_pak_path).context("Is not valid DRG pak") {
+                if let Err(e) = is_drg_pak(&window.drg_pak_path).context("Selected pak is not valid.") {
                     window.drg_pak_path_err = Some(e.to_string());
                 } else {
                     self.state.config.drg_pak_path = Some(PathBuf::from(
@@ -1005,7 +1064,7 @@ impl App {
         if let Some(_lints_toggle) = &self.lints_toggle_window {
             let mut open = true;
 
-            egui::Window::new("Toggle lints")
+            egui::Window::new("Toggle Lints")
                 .open(&mut open)
                 .resizable(false)
                 .show(ctx, |ui| {
@@ -1152,7 +1211,7 @@ impl App {
         if self.lint_report_window.is_some() {
             let mut open = true;
 
-            egui::Window::new("Lint results")
+            egui::Window::new("Lint Results")
                 .open(&mut open)
                 .resizable(true)
                 .show(ctx, |ui| {
@@ -1167,7 +1226,7 @@ impl App {
                                 if let Some(conflicting_mods) = &report.conflicting_mods {
                                     if !conflicting_mods.is_empty() {
                                         CollapsingHeader::new(
-                                            RichText::new("⚠ Mods(s) with conflicting asset modifications detected")
+                                            RichText::new("\u{26A0} Mods(s) with conflicting asset modifications detected")
                                                 .color(AMBER),
                                         )
                                         .default_open(true)
@@ -1175,7 +1234,7 @@ impl App {
                                             conflicting_mods.iter().for_each(|(path, mods)| {
                                                 CollapsingHeader::new(
                                                     RichText::new(format!(
-                                                        "⚠ Conflicting modification of asset `{}`",
+                                                        "\u{26A0} Conflicting modification of asset `{}`",
                                                         path
                                                     ))
                                                     .color(AMBER),
@@ -1196,7 +1255,7 @@ impl App {
                                 if let Some(asset_register_bin_mods) = &report.asset_register_bin_mods {
                                     if !asset_register_bin_mods.is_empty() {
                                         CollapsingHeader::new(
-                                            RichText::new("ℹ Mod(s) with `AssetRegistry.bin` included detected")
+                                            RichText::new("\u{2139} Mod(s) with `AssetRegistry.bin` included detected")
                                                 .color(Color32::LIGHT_BLUE),
                                         )
                                         .default_open(true)
@@ -1205,7 +1264,7 @@ impl App {
                                                 |(r#mod, paths)| {
                                                     CollapsingHeader::new(
                                                         RichText::new(format!(
-                                                        "ℹ {} includes one or more `AssetRegistry.bin`",
+                                                        "\u{2139} {} includes one or more `AssetRegistry.bin`",
                                                         r#mod.url
                                                     ))
                                                         .color(Color32::LIGHT_BLUE),
@@ -1225,7 +1284,7 @@ impl App {
                                     if !shader_file_mods.is_empty() {
                                         CollapsingHeader::new(
                                             RichText::new(
-                                                "⚠ Mods(s) with shader files included detected",
+                                                "\u{26A0} Mods(s) with shader files included detected",
                                             )
                                             .color(AMBER),
                                         )
@@ -1235,7 +1294,7 @@ impl App {
                                                 |(r#mod, shader_files)| {
                                                     CollapsingHeader::new(
                                                         RichText::new(format!(
-                                                            "⚠ {} includes one or more shader files",
+                                                            "\u{26A0} {} includes one or more shader files",
                                                             r#mod.url
                                                         ))
                                                         .color(AMBER),
@@ -1255,7 +1314,7 @@ impl App {
                                     if !outdated_pak_version_mods.is_empty() {
                                         CollapsingHeader::new(
                                             RichText::new(
-                                                "⚠ Mod(s) with outdated pak version detected",
+                                                "\u{26A0} Mod(s) with outdated pak version detected",
                                             )
                                             .color(AMBER),
                                         )
@@ -1265,7 +1324,7 @@ impl App {
                                                 |(r#mod, version)| {
                                                     ui.label(
                                                         RichText::new(format!(
-                                                            "⚠ {} includes outdated pak version {}",
+                                                            "\u{26A0} {} includes outdated pak version {}",
                                                             r#mod.url, version
                                                         ))
                                                         .color(AMBER),
@@ -1280,7 +1339,7 @@ impl App {
                                     if !empty_archive_mods.is_empty() {
                                         CollapsingHeader::new(
                                             RichText::new(
-                                                "⚠ Mod(s) with empty archives detected",
+                                                "\u{26A0} Mod(s) with empty archives detected",
                                             )
                                             .color(AMBER),
                                         )
@@ -1289,7 +1348,7 @@ impl App {
                                             empty_archive_mods.iter().for_each(|r#mod| {
                                                 ui.label(
                                                     RichText::new(format!(
-                                                        "⚠ {} contains an empty archive",
+                                                        "\u{26A0} {} contains an empty archive",
                                                         r#mod.url
                                                     ))
                                                     .color(AMBER),
@@ -1303,7 +1362,7 @@ impl App {
                                     if !archive_with_only_non_pak_files_mods.is_empty() {
                                         CollapsingHeader::new(
                                             RichText::new(
-                                                "⚠ Mod(s) with only non-`.pak` files detected",
+                                                "\u{26A0} Mod(s) with only non-`.pak` files detected",
                                             )
                                             .color(AMBER),
                                         )
@@ -1312,7 +1371,7 @@ impl App {
                                             archive_with_only_non_pak_files_mods.iter().for_each(|r#mod| {
                                                 ui.label(
                                                     RichText::new(format!(
-                                                        "⚠ {} contains only non-`.pak` files, perhaps the author forgot to pack it?",
+                                                        "\u{26A0} {} contains only non-`.pak` files, perhaps the author forgot to pack it?",
                                                         r#mod.url
                                                     ))
                                                     .color(AMBER),
@@ -1326,7 +1385,7 @@ impl App {
                                     if !archive_with_multiple_paks_mods.is_empty() {
                                         CollapsingHeader::new(
                                             RichText::new(
-                                                "⚠ Mod(s) with multiple `.pak`s detected",
+                                                "\u{26A0} Mod(s) with multiple `.pak`s detected",
                                             )
                                             .color(AMBER),
                                         )
@@ -1334,7 +1393,7 @@ impl App {
                                         .show(ui, |ui| {
                                             archive_with_multiple_paks_mods.iter().for_each(|r#mod| {
                                                 ui.label(RichText::new(format!(
-                                                    "⚠ {} contains multiple `.pak`s, only the first encountered `.pak` will be loaded",
+                                                    "\u{26A0} {} contains multiple `.pak`s, only the first encountered `.pak` will be loaded",
                                                     r#mod.url
                                                 ))
                                                 .color(AMBER));
@@ -1347,7 +1406,7 @@ impl App {
                                     if !non_asset_file_mods.is_empty() {
                                         CollapsingHeader::new(
                                             RichText::new(
-                                                "⚠ Mod(s) with non-asset files detected",
+                                                "\u{26A0} Mod(s) with non-asset files detected",
                                             )
                                             .color(AMBER),
                                         )
@@ -1356,7 +1415,7 @@ impl App {
                                             non_asset_file_mods.iter().for_each(|(r#mod, files)| {
                                                 CollapsingHeader::new(
                                                     RichText::new(format!(
-                                                        "⚠ {} includes non-asset files",
+                                                        "\u{26A0} {} includes non-asset files",
                                                         r#mod.url
                                                     ))
                                                     .color(AMBER),
@@ -1375,7 +1434,7 @@ impl App {
                                     if !split_asset_pairs_mods.is_empty() {
                                         CollapsingHeader::new(
                                             RichText::new(
-                                                "⚠ Mod(s) with split {uexp, uasset} pairs detected",
+                                                "\u{26A0} Mod(s) with split {uexp, uasset} pairs detected",
                                             )
                                             .color(AMBER),
                                         )
@@ -1384,7 +1443,7 @@ impl App {
                                             split_asset_pairs_mods.iter().for_each(|(r#mod, files)| {
                                                 CollapsingHeader::new(
                                                     RichText::new(format!(
-                                                        "⚠ {} includes split {{uexp, uasset}} pairs",
+                                                        "\u{26A0} {} includes split {{uexp, uasset}} pairs",
                                                         r#mod.url
                                                     ))
                                                     .color(AMBER),
@@ -1410,7 +1469,7 @@ impl App {
                                     if !unmodified_game_assets_mods.is_empty() {
                                         CollapsingHeader::new(
                                             RichText::new(
-                                                "⚠ Mod(s) with unmodified game assets detected",
+                                                "\u{26A0} Mod(s) with unmodified game assets detected",
                                             )
                                             .color(AMBER),
                                         )
@@ -1419,7 +1478,7 @@ impl App {
                                             unmodified_game_assets_mods.iter().for_each(|(r#mod, files)| {
                                                 CollapsingHeader::new(
                                                     RichText::new(format!(
-                                                        "⚠ {} includes unmodified game assets",
+                                                        "\u{26A0} {} includes unmodified game assets",
                                                         r#mod.url
                                                     ))
                                                     .color(AMBER),
@@ -1577,11 +1636,12 @@ impl eframe::App for App {
                         }
 
                         ui.add_enabled_ui(self.state.config.drg_pak_path.is_some(), |ui| {
-                            let mut button = ui.button("Install mods");
+                            let mut button = ui
+                                .button("Apply changes")
+                                .on_hover_text("Installs the DLL hook inside the game folder and regenerates mod bundle");
                             if self.state.config.drg_pak_path.is_none() {
-                                button = button.on_disabled_hover_text(
-                                    "DRG install not found. Configure it in the settings menu.",
-                                );
+                                button = button
+                                    .on_disabled_hover_text("Game not found. Configure it in the settings menu.");
                             }
 
                             let mut mods = Vec::new();
@@ -1606,11 +1666,12 @@ impl eframe::App for App {
                         });
 
                         ui.add_enabled_ui(self.state.config.drg_pak_path.is_some(), |ui| {
-                            let mut button = ui.button("Uninstall mods");
+                            let mut button = ui
+                                .button("Uninstall hook and mods")
+                                .on_hover_text("Removes the DLL hook and mod bundle from the game folder");
                             if self.state.config.drg_pak_path.is_none() {
-                                button = button.on_disabled_hover_text(
-                                    "DRG install not found. Configure it in the settings menu.",
-                                );
+                                button = button
+                                    .on_disabled_hover_text("Game not found. Configure it in the settings menu.");
                             }
                             if button.clicked() {
                                 self.last_action_status = LastActionStatus::Idle;
@@ -1635,7 +1696,7 @@ impl eframe::App for App {
                                     match uninstall(pak_path, mods) {
                                         Ok(()) => {
                                             self.last_action_status = LastActionStatus::Success(
-                                                "Successfully uninstalled mods".to_string(),
+                                                "DLL hook and mods removed".to_string(),
                                             );
                                         }
                                         Err(e) => {
@@ -1650,9 +1711,7 @@ impl eframe::App for App {
 
                         if ui
                             .button("Update cache")
-                            .on_hover_text(
-                                "Checks for updates for all mods and updates local cache",
-                            )
+                            .on_hover_text("Checks for updates for all mods and updates local cache")
                             .clicked()
                         {
                             message::UpdateCache::send(self);
@@ -1678,12 +1737,18 @@ impl eframe::App for App {
                 {
                     self.lints_toggle_window = Some(WindowLintsToggle);
                 }
-                if ui.button("⚙").on_hover_text("Open settings").clicked() {
+                if ui
+                    .button("\u{2699}")
+                    .on_hover_text("Open settings")
+                    .clicked()
+                {
                     self.settings_window = Some(WindowSettings::new(&self.state));
                 }
                 if let Some(available_update) = &self.available_update {
                     if ui
-                        .button(egui::RichText::new("\u{26A0}").color(ui.visuals().warn_fg_color))
+                        .button(
+                            egui::RichText::new("\u{21BB}").color(Color32::from_rgb(0, 143, 255))
+                        )
                         .on_hover_text(format!(
                             "Update available: {}\n{}",
                             available_update.tag_name, available_update.html_url
@@ -1731,7 +1796,7 @@ impl eframe::App for App {
 
             let buttons = |ui: &mut Ui, mod_data: &mut ModData| {
                 if ui
-                    .button("📋")
+                    .button("\u{1F4CB}")
                     .on_hover_text_at_pointer("Copy profile mods")
                     .clicked()
                 {
@@ -1748,7 +1813,7 @@ impl eframe::App for App {
                 /*
                 if ui
                     .button("pop out")
-                    .on_hover_text_at_pointer("pop out")
+                    .on_hover_text_at_pointer("Pop out")
                     .clicked()
                 {
                     self.open_profiles.insert(mod_data.active_profile.clone());

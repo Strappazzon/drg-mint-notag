@@ -113,7 +113,7 @@ where
             ui.visuals_mut().widgets.hovered.weak_bg_fill = colors::DARK_RED;
             ui.visuals_mut().widgets.active.weak_bg_fill = colors::DARKER_RED;
             if ui
-                .button(" 🗑 ")
+                .button("\u{1F5D1}")
                 .on_hover_text_at_pointer(format!("Delete {name}"))
                 .clicked()
             {
@@ -133,7 +133,7 @@ where
             .scope(|ui| {
                 ui.visuals_mut().widgets.hovered.weak_bg_fill = colors::DARK_GREEN;
                 ui.visuals_mut().widgets.active.weak_bg_fill = colors::DARKER_GREEN;
-                ui.button(" ➕ ")
+                ui.button("\u{2795}")
                     .on_hover_text_at_pointer(format!("Add new {name}"))
             })
             .inner;
@@ -189,7 +189,7 @@ where
     N: NamedEntries<E>,
 {
     let response = ui
-        .button("🗐")
+        .button("\u{1F5D0}")
         .on_hover_text_at_pointer(format!("Duplicate {name}"));
     let popup_id = ui.make_persistent_id(format!("duplicate-{name}"));
     if response.clicked() {

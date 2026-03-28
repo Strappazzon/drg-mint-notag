@@ -157,7 +157,7 @@ impl ResolveMods {
                     app.resolve_mod.clear();
                     app.state.mod_data.save().unwrap();
                     app.last_action_status =
-                        LastActionStatus::Success("mods successfully resolved".to_string());
+                        LastActionStatus::Success("Mods successfully resolved".to_string());
                 }
                 Err(e) => match e.downcast::<IntegrationError>() {
                     Ok(IntegrationError::NoProvider { url: _, factory }) => {
@@ -211,7 +211,7 @@ impl Integrate {
                 Ok(()) => {
                     info!("integration complete");
                     app.last_action_status =
-                        LastActionStatus::Success("integration complete".to_string());
+                        LastActionStatus::Success("DLL hook and mod bundle installed".to_string());
                 }
                 Err(IntegrationErr { mod_ctxt, kind }) => match kind {
                     IntegrationErrKind::Generic(e) => match e.downcast::<IntegrationError>() {
@@ -298,7 +298,7 @@ impl UpdateCache {
                 Ok(()) => {
                     info!("cache update complete");
                     app.last_action_status =
-                        LastActionStatus::Success("successfully updated cache".to_string());
+                        LastActionStatus::Success("Cache updated".to_string());
                 }
                 Err(e) => match e.downcast::<IntegrationError>() {
                     // TODO make provider initializing more generic
@@ -506,7 +506,7 @@ impl LintMods {
                     info!("lint mod report complete");
                     app.lint_report = Some(report);
                     app.last_action_status =
-                        LastActionStatus::Success("lint mod report complete".to_string());
+                        LastActionStatus::Success("Mod lint report complete".to_string());
                 }
                 Err(e) => match e.downcast::<IntegrationError>() {
                     Ok(IntegrationError::NoProvider { url: _, factory }) => {
@@ -604,14 +604,14 @@ impl SelfUpdate {
                     info!("self update complete");
                     app.original_exe_path = Some(original_exe_path);
                     app.last_action_status =
-                        LastActionStatus::Success("self update complete".to_string());
+                        LastActionStatus::Success("Self update complete".to_string());
                 }
                 Err(e) => {
                     error!("self update failed");
                     error!("{:#?}", e);
                     app.self_update_rid = None;
                     app.last_action_status =
-                        LastActionStatus::Failure("self update failed".to_string());
+                        LastActionStatus::Failure("Self update failed".to_string());
                 }
             }
             app.integrate_rid = None;
