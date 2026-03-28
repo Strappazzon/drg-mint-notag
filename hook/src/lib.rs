@@ -177,9 +177,6 @@ impl<T> TArray<T> {
     fn as_slice(&self) -> &[T] {
         unsafe { std::slice::from_raw_parts(self.data, self.num as usize) }
     }
-    fn as_slice_mut(&mut self) -> &mut [T] {
-        unsafe { std::slice::from_raw_parts_mut(self.data as *mut _, self.num as usize) }
-    }
     fn from_slice(slice: &[T]) -> TArray<T> {
         TArray {
             data: slice.as_ptr(),
@@ -312,21 +309,6 @@ fn does_save_game_exist_detour(slot_name: *const FString, user_index: i32) -> bo
 fn get_server_name_detour(a: *const c_void, b: *const c_void) -> *const FString {
     unsafe {
         let name: *mut FString = GetServerName.call(a, b) as *mut _;
-
-        let prefix = "[MODDED] ".encode_utf16().collect::<Vec<_>>();
-        let old_num = (*name).num;
-
-        let new_num = (*name).num + prefix.len() as i32;
-        if (*name).max < new_num {
-            Resize16.unwrap()(name as *const c_void, new_num);
-            (*name).max = new_num;
-        }
-        (*name).num = new_num;
-
-        let memory = (*name).as_slice_mut();
-
-        memory.copy_within(0..old_num as usize, prefix.len());
-        memory[0..prefix.len()].copy_from_slice(&prefix);
 
         name
     }
