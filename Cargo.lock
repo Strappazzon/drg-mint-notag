@@ -3046,7 +3046,7 @@ checksum = "dd8b5dd2ae5ed71462c540258bedcb51965123ad7e7ccf4b9a8cafaa4a63576d"
 [[package]]
 name = "oodle_loader"
 version = "0.2.1"
-source = "git+https://github.com/trumank/repak?rev=f8c345d37ed52056739a63801ee2cec84ce29a64#f8c345d37ed52056739a63801ee2cec84ce29a64"
+source = "git+https://github.com/trumank/repak?rev=96410d664ac46c87cf451a3c5bad38d8cf42dda5#96410d664ac46c87cf451a3c5bad38d8cf42dda5"
 dependencies = [
  "anyhow",
  "hex",
@@ -3647,7 +3647,7 @@ dependencies = [
 [[package]]
 name = "repak"
 version = "0.2.1"
-source = "git+https://github.com/trumank/repak?rev=f8c345d37ed52056739a63801ee2cec84ce29a64#f8c345d37ed52056739a63801ee2cec84ce29a64"
+source = "git+https://github.com/trumank/repak?rev=96410d664ac46c87cf451a3c5bad38d8cf42dda5#96410d664ac46c87cf451a3c5bad38d8cf42dda5"
 dependencies = [
  "aes",
  "byteorder",

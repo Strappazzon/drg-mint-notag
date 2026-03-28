@@ -16,7 +16,7 @@ edition = "2021"
 anyhow = { version = "1.0.75", features = ["backtrace"] }
 patternsleuth = { git = "https://github.com/trumank/patternsleuth" }
 steamlocate = "2.0.0-alpha.0"
-repak = { git = "https://github.com/trumank/repak", rev = "f8c345d37ed52056739a63801ee2cec84ce29a64" }
+repak = { git = "https://github.com/trumank/repak", rev = "96410d664ac46c87cf451a3c5bad38d8cf42dda5" }
 
 [package]
 name = "mint"
@@ -27,8 +27,9 @@ version.workspace = true
 edition.workspace = true
 
 [features]
-default = ["hook"]
+default = ["hook", "oodle"]
 hook = ["dep:hook"]
+oodle = ["repak/oodle_implicit_dynamic"]
 debug = ["egui/deadlock_detection", "egui/extra_debug_asserts", "egui/extra_asserts"]
 
 [dev-dependencies]
@@ -57,7 +58,7 @@ opener = "0.6.1"
 path-slash = "0.2.1"
 rayon = "1.8.0"
 regex = "1.10.2"
-repak = { workspace = true, features = ["oodle", "oodle_loader"] }
+repak.workspace = true
 reqwest = { version = "0.11.22", default-features = false, features = ["blocking", "rustls"] }
 reqwest-middleware = "0.2.4"
 rfd = "0.12.1"
