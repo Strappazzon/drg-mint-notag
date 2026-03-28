@@ -51,7 +51,15 @@ pub fn gui(dirs: Dirs, args: Option<Vec<String>>) -> Result<()> {
         centered: true,
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([900.0, 600.0])
-            .with_drag_and_drop(true),
+            .with_drag_and_drop(true)
+            .with_icon(std::sync::Arc::new(egui::IconData {
+                rgba: image::load_from_memory(include_bytes!("../../assets/icon-gui.ico"))
+                    .unwrap()
+                    .to_rgba8()
+                    .to_vec(),
+                width: 32,
+                height: 32,
+            })),
         ..Default::default()
     };
     eframe::run_native(

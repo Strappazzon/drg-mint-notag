@@ -25,12 +25,16 @@ authors.workspace = true
 license.workspace = true
 version.workspace = true
 edition.workspace = true
+build = "src/build.rs"
 
 [features]
 default = ["hook", "oodle"]
 hook = ["dep:hook"]
 oodle = ["repak/oodle_implicit_dynamic"]
 debug = ["egui/deadlock_detection", "egui/extra_debug_asserts", "egui/extra_asserts"]
+
+[build-dependencies]
+winresource = "=0.1.19"
 
 [dev-dependencies]
 mockall = "0.11.4"
@@ -48,7 +52,7 @@ egui_commonmark = { version = "0.10.0", features = ["fetch"] }
 egui_dnd = { git = "https://github.com/lucasmerlin/egui_dnd.git" }
 futures = "0.3.30"
 hex = "0.4.3"
-image = { version = "0.24.7", default-features = false, features = ["png"] }
+image = { version = "0.24.7", default-features = false, features = ["ico", "png"] }
 indexmap = { version = "2.1.0", features = ["serde"] }
 inventory = "0.3.14"
 mint_lib = { path = "mint_lib" }
