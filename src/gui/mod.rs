@@ -124,6 +124,7 @@ pub struct App {
     needs_restart: bool,
     self_update_rid: Option<MessageHandle<SelfUpdateProgress>>,
     original_exe_path: Option<PathBuf>,
+    pending_delete: Option<usize>,
 }
 
 #[derive(Default)]
@@ -188,6 +189,7 @@ impl App {
             needs_restart: false,
             self_update_rid: None,
             original_exe_path: None,
+            pending_delete: None,
         })
     }
 
@@ -685,9 +687,30 @@ impl App {
                 ctx.needs_save = true;
             }
 
-            if let Some(remove) = ctx.btn_remove {
-                profile.mods.remove(remove);
-                ctx.needs_save = true;
+            if let Some(index) = self.pending_delete {
+                egui::Window::new("Delete Mod")
+                    .collapsible(false)
+                    .resizable(false)
+                    .show(ui.ctx(), |ui| {
+                        ui.add_space(10.);
+                        ui.label("Are you sure you want to delete this mod from the current profile? This cannot be undone.");
+                        ui.add_space(10.);
+
+                        ui.with_layout(egui::Layout::right_to_left(Align::TOP), |ui| {
+                            if ui
+                                .add(egui::Button::new(RichText::new("Delete").color(Color32::WHITE)).fill(Color32::DARK_RED))
+                                .clicked()
+                            {
+                                profile.mods.remove(index);
+                                ctx.needs_save = true;
+                                self.pending_delete = None;
+                            }
+
+                            if ui.button("Cancel").clicked() {
+                                self.pending_delete = None;
+                            }
+                        });
+                    });
             }
         };
 
@@ -698,6 +721,10 @@ impl App {
                 ui.label("No such profile");
             }
         });
+
+        if let Some(index) = ctx.btn_remove {
+            self.pending_delete = Some(index);
+        }
 
         if let Some(add_deps) = ctx.add_deps {
             message::ResolveMods::send(self, ui.ctx(), add_deps, true);
