@@ -310,44 +310,40 @@ impl App {
                     match approval_status {
                         ApprovalStatus::Verified => {
                             mk_searchable_modio_tag(
-                                "Verified",
+                                "V",
                                 ui,
                                 Some(egui::Color32::LIGHT_GREEN),
-                                Some("Does not contain any gameplay affecting features or changes"),
+                                Some("Does not change gameplay elements."),
                             );
                         }
                         ApprovalStatus::Approved => {
                             mk_searchable_modio_tag(
-                                "Approved",
+                                "A",
                                 ui,
                                 Some(egui::Color32::LIGHT_BLUE),
-                                Some("Contains gameplay affecting features or changes"),
+                                Some("Changes gameplay elements."),
                             );
                         }
                         ApprovalStatus::Sandbox => {
-                            mk_searchable_modio_tag("Sandbox", ui, Some(egui::Color32::LIGHT_YELLOW), Some("Contains significant, possibly progression breaking, changes to gameplay"));
+                            mk_searchable_modio_tag(
+                                "S",
+                                ui,
+                                Some(egui::Color32::LIGHT_YELLOW),
+                                Some("Dramatically changes gameplay elements, awaiting approval or manually added.")
+                            );
                         }
                     }
 
                     match required_status {
                         RequiredStatus::RequiredByAll => {
                             mk_searchable_modio_tag(
-                                "RequiredByAll",
+                                "R",
                                 ui,
                                 Some(egui::Color32::LIGHT_RED),
-                                Some(
-                                    "All lobby members must use this mod for it to work correctly!",
-                                ),
+                                Some("All lobby members must use this mod for it to work correctly.",),
                             );
                         }
-                        RequiredStatus::Optional => {
-                            mk_searchable_modio_tag(
-                                "Optional",
-                                ui,
-                                None,
-                                Some("Clients are not required to install this mod to function"),
-                            );
-                        }
+                        RequiredStatus::Optional => {}
                     }
 
                     if *qol {
