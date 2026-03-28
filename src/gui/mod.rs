@@ -48,6 +48,7 @@ use self::toggle_switch::toggle_switch;
 
 pub fn gui(dirs: Dirs, args: Option<Vec<String>>) -> Result<()> {
     let options = eframe::NativeOptions {
+        centered: true,
         viewport: egui::ViewportBuilder::default()
             .with_inner_size([900.0, 600.0])
             .with_drag_and_drop(true),
