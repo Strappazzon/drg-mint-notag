@@ -38,6 +38,8 @@ winresource = "=0.1.19"
 
 [dev-dependencies]
 mockall = "0.11.4"
+simple-easing = "=1.0.1"
+unicode-segmentation = "=1.7.1"
 
 [dependencies]
 ansi_term = "0.12.1"
@@ -46,14 +48,16 @@ async-trait = "0.1.77"
 clap = { version = "=4.4.14", features = ["derive"] }
 dialoguer = "0.11.0"
 directories = "5.0.1"
-eframe = "0.24.0"
-egui = "0.24.0"
-egui_commonmark = { version = "0.10.0", features = ["fetch"] }
+eframe = "=0.25.0"
+egui = "=0.25.0"
+egui_commonmark = { version = "=0.11.0", features = ["fetch"] }
+egui_dnd = "=0.6.0"
 futures = "0.3.30"
 hex = "0.4.3"
 image = { version = "0.24.7", default-features = false, features = ["ico", "png"] }
 indexmap = { version = "2.1.0", features = ["serde"] }
 inventory = "0.3.14"
+itertools = "=0.12.0"
 mint_lib = { path = "mint_lib" }
 modio = { git = "https://github.com/trumank/modio-rs.git", branch = "dev", default-features = false, features = ["rustls-tls"] }
 obake = { version = "1.0.5", features = ["serde"] }

@@ -406,7 +406,7 @@ impl Default for Config!["0.0.0"] {
                 .as_ref()
                 .map(DRGInstallation::main_pak),
             gui_theme: None,
-            sorting_config: Some(SortingConfig::default()),
+            sorting_config: None,
         }
     }
 }
@@ -458,7 +458,7 @@ fn read_config_or_default(config_path: &PathBuf) -> Result<VersionAnnotatedConfi
                         provider_parameters: legacy.provider_parameters,
                         drg_pak_path: legacy.drg_pak_path,
                         gui_theme: None,
-                        sorting_config: Some(SortingConfig::default()),
+                        sorting_config: None,
                     })
                 }
             }
