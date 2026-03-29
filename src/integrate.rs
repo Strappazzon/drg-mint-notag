@@ -5,6 +5,7 @@ use std::io::{self, BufReader, BufWriter, Cursor, ErrorKind, Read, Seek};
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
+use mint_lib::DRGInstallation;
 use repak::PakWriter;
 use tracing::info;
 use uasset_utils::splice::{
@@ -12,7 +13,7 @@ use uasset_utils::splice::{
 };
 
 use crate::providers::ModInfo;
-use crate::{get_pak_from_data, open_file, DRGInstallation};
+use crate::{get_pak_from_data, open_file};
 
 use unreal_asset::{
     exports::ExportBaseTrait,
@@ -46,21 +47,24 @@ use unreal_asset::{
 pub fn uninstall<P: AsRef<Path>>(path_pak: P, modio_mods: HashSet<u32>) -> Result<()> {
     let installation = DRGInstallation::from_pak_path(path_pak)?;
     let path_mods_pak = installation.paks_path().join("mods_P.pak");
-    let path_hook_dll = installation
-        .binaries_directory()
-        .join(installation.installation_type.hook_dll_name());
     match std::fs::remove_file(&path_mods_pak) {
         Ok(()) => Ok(()),
         Err(e) if e.kind() == ErrorKind::NotFound => Ok(()),
         Err(e) => Err(e),
     }
     .with_context(|| format!("failed to remove {}", path_mods_pak.display()))?;
-    match std::fs::remove_file(&path_hook_dll) {
-        Ok(()) => Ok(()),
-        Err(e) if e.kind() == ErrorKind::NotFound => Ok(()),
-        Err(e) => Err(e),
+    #[cfg(feature = "hook")]
+    {
+        let path_hook_dll = installation
+            .binaries_directory()
+            .join(installation.installation_type.hook_dll_name());
+        match std::fs::remove_file(&path_hook_dll) {
+            Ok(()) => Ok(()),
+            Err(e) if e.kind() == ErrorKind::NotFound => Ok(()),
+            Err(e) => Err(e),
+        }
+        .with_context(|| format!("failed to remove {}", path_hook_dll.display()))?;
     }
-    .with_context(|| format!("failed to remove {}", path_hook_dll.display()))?;
     uninstall_modio(&installation, modio_mods).ok();
     Ok(())
 }
@@ -137,15 +141,40 @@ fn uninstall_modio(installation: &DRGInstallation, modio_mods: HashSet<u32>) -> 
     Ok(())
 }
 
-pub fn integrate<P: AsRef<Path>>(path_pak: P, mods: Vec<(ModInfo, PathBuf)>) -> Result<()> {
-    let installation = DRGInstallation::from_pak_path(&path_pak)?;
-    let path_mod_pak = installation.paks_path().join("mods_P.pak");
-    let path_hook_dll = installation
-        .binaries_directory()
-        .join(installation.installation_type.hook_dll_name());
+#[derive(Debug)]
+pub struct IntegrationErr {
+    pub mod_ctxt: Option<ModInfo>,
+    pub kind: IntegrationErrKind,
+}
 
-    let mut fsd_pak_reader = BufReader::new(open_file(path_pak)?);
-    let fsd_pak = repak::PakReader::new_any(&mut fsd_pak_reader, None)?;
+#[derive(Debug)]
+pub enum IntegrationErrKind {
+    Generic(anyhow::Error),
+    Repak(repak::Error),
+    UnrealAsset(unreal_asset::Error),
+}
+
+pub fn integrate<P: AsRef<Path>>(
+    path_pak: P,
+    mods: Vec<(ModInfo, PathBuf)>,
+) -> Result<(), IntegrationErr> {
+    let installation = DRGInstallation::from_pak_path(&path_pak).map_err(|e| IntegrationErr {
+        mod_ctxt: None,
+        kind: IntegrationErrKind::Generic(e),
+    })?;
+    let path_mod_pak = installation.paks_path().join("mods_P.pak");
+
+    let fsd_pak_file = open_file(path_pak).map_err(|e| IntegrationErr {
+        mod_ctxt: None,
+        kind: IntegrationErrKind::Generic(e),
+    })?;
+    let mut fsd_pak_reader = BufReader::new(fsd_pak_file);
+    let fsd_pak = repak::PakBuilder::new()
+        .reader(&mut fsd_pak_reader)
+        .map_err(|e| IntegrationErr {
+            mod_ctxt: None,
+            kind: IntegrationErrKind::Repak(e),
+        })?;
 
     #[derive(Debug, Default)]
     struct Dir<'a> {
@@ -208,7 +237,7 @@ pub fn integrate<P: AsRef<Path>>(path_pak: P, mods: Vec<(ModInfo, PathBuf)>) -> 
         let binding = normalize_path(path);
         let path = binding.to_str().unwrap().replace('\\', "/");
 
-        pak.write_file(&path, &mut Cursor::new(data))?;
+        pak.write_file(&path, data)?;
 
         Ok(())
     };
@@ -263,36 +292,59 @@ pub fn integrate<P: AsRef<Path>>(path_pak: P, mods: Vec<(ModInfo, PathBuf)>) -> 
             Ok(file) => Ok(Some(file)),
             Err(repak::Error::MissingEntry(_)) => Ok(None),
             Err(e) => Err(e),
-        }?;
+        }
+        .map_err(|e| IntegrationErr {
+            mod_ctxt: None,
+            kind: IntegrationErrKind::Repak(e),
+        })?;
         asset.uexp = match fsd_pak.get(&format!("{path}.uexp"), &mut fsd_pak_reader) {
             Ok(file) => Ok(Some(file)),
             Err(repak::Error::MissingEntry(_)) => Ok(None),
             Err(e) => Err(e),
-        }?;
+        }
+        .map_err(|e| IntegrationErr {
+            mod_ctxt: None,
+            kind: IntegrationErrKind::Repak(e),
+        })?;
     }
 
-    let mut mod_pak = repak::PakWriter::new(
-        BufWriter::new(
-            OpenOptions::new()
-                .write(true)
-                .create(true)
-                .truncate(true)
-                .open(&path_mod_pak)?,
-        ),
-        None,
-        repak::Version::V11,
-        "../../../".to_string(),
-        None,
-    );
+    let mut mod_pak = repak::PakBuilder::new()
+        .compression([repak::Compression::Zlib])
+        .writer(
+            BufWriter::new(
+                OpenOptions::new()
+                    .write(true)
+                    .create(true)
+                    .truncate(true)
+                    .open(&path_mod_pak)
+                    .map_err(|e| IntegrationErr {
+                        mod_ctxt: None,
+                        kind: IntegrationErrKind::Generic(e.into()),
+                    })?,
+            ),
+            repak::Version::V11,
+            "../../../".to_string(),
+            None,
+        );
 
-    let hook_dll = include_bytes!(env!("CARGO_CDYLIB_FILE_HOOK_hook"));
-    if path_hook_dll
-        .metadata()
-        .map(|m| m.len() != hook_dll.len() as u64)
-        .unwrap_or(true)
+    #[cfg(feature = "hook")]
     {
-        std::fs::write(&path_hook_dll, hook_dll)
-            .with_context(|| format!("failed to write hook to {}", path_hook_dll.display()))?;
+        let path_hook_dll = installation
+            .binaries_directory()
+            .join(installation.installation_type.hook_dll_name());
+        let hook_dll = include_bytes!(env!("CARGO_CDYLIB_FILE_HOOK_hook"));
+        if path_hook_dll
+            .metadata()
+            .map(|m| m.len() != hook_dll.len() as u64)
+            .unwrap_or(true)
+        {
+            std::fs::write(&path_hook_dll, hook_dll)
+                .with_context(|| format!("failed to write hook to {}", path_hook_dll.display()))
+                .map_err(|e| IntegrationErr {
+                    mod_ctxt: None,
+                    kind: IntegrationErrKind::Generic(e),
+                })?;
+        }
     }
 
     let mut init_spacerig_assets = HashSet::new();
@@ -300,9 +352,23 @@ pub fn integrate<P: AsRef<Path>>(path_pak: P, mods: Vec<(ModInfo, PathBuf)>) -> 
 
     let mut added_paths = HashSet::new();
 
-    for (_mod_info, path) in &mods {
-        let mut buf = get_pak_from_data(Box::new(BufReader::new(open_file(path)?)))?;
-        let pak = repak::PakReader::new_any(&mut buf, None)?;
+    for (mod_info, path) in &mods {
+        let raw_mod_file = open_file(path).map_err(|e| IntegrationErr {
+            mod_ctxt: Some(mod_info.clone()),
+            kind: IntegrationErrKind::Generic(e),
+        })?;
+        let mut buf = get_pak_from_data(Box::new(BufReader::new(raw_mod_file))).map_err(|e| {
+            IntegrationErr {
+                mod_ctxt: Some(mod_info.clone()),
+                kind: IntegrationErrKind::Generic(e),
+            }
+        })?;
+        let pak = repak::PakBuilder::new()
+            .reader(&mut buf)
+            .map_err(|e| IntegrationErr {
+                mod_ctxt: Some(mod_info.clone()),
+                kind: IntegrationErrKind::Repak(e),
+            })?;
 
         let mount = Path::new(pak.mount_point());
 
@@ -310,7 +376,11 @@ pub fn integrate<P: AsRef<Path>>(path_pak: P, mods: Vec<(ModInfo, PathBuf)>) -> 
             let j = mount.join(&p);
             let new_path = j
                 .strip_prefix("../../../")
-                .context("prefix does not match")?;
+                .context("prefix does not match")
+                .map_err(|e| IntegrationErr {
+                    mod_ctxt: Some(mod_info.clone()),
+                    kind: IntegrationErrKind::Generic(e),
+                })?;
             let new_path_str = &new_path.to_string_lossy().replace('\\', "/");
             let lowercase = new_path_str.to_ascii_lowercase();
             if added_paths.contains(&lowercase) {
@@ -334,7 +404,10 @@ pub fn integrate<P: AsRef<Path>>(path_pak: P, mods: Vec<(ModInfo, PathBuf)>) -> 
                 }
             }
 
-            let file_data = pak.get(&p, &mut buf)?;
+            let file_data = pak.get(&p, &mut buf).map_err(|e| IntegrationErr {
+                mod_ctxt: Some(mod_info.clone()),
+                kind: IntegrationErrKind::Repak(e),
+            })?;
             if let Some(raw) = new_path_str
                 .strip_suffix(".uasset")
                 .and_then(|path| deferred_assets.get_mut(path))
@@ -346,25 +419,52 @@ pub fn integrate<P: AsRef<Path>>(path_pak: P, mods: Vec<(ModInfo, PathBuf)>) -> 
             {
                 raw.uexp = Some(file_data);
             } else {
-                write_file(&mut mod_pak, &file_data, new_path_str)?;
+                write_file(&mut mod_pak, &file_data, new_path_str).map_err(|e| IntegrationErr {
+                    mod_ctxt: Some(mod_info.clone()),
+                    kind: IntegrationErrKind::Generic(e),
+                })?;
                 added_paths.insert(lowercase);
             }
         }
     }
 
     {
-        let mut pcb_asset = deferred_assets[&pcb_path].parse()?;
+        let mut pcb_asset = deferred_assets[&pcb_path]
+            .parse()
+            .map_err(|e| IntegrationErr {
+                mod_ctxt: None,
+                kind: IntegrationErrKind::Generic(e),
+            })?;
         hook_pcb(&mut pcb_asset);
-        write_asset(&mut mod_pak, pcb_asset, pcb_path)?;
+        write_asset(&mut mod_pak, pcb_asset, pcb_path).map_err(|e| IntegrationErr {
+            mod_ctxt: None,
+            kind: IntegrationErrKind::Generic(e),
+        })?;
     }
     for patch_path in patch_paths {
-        let mut asset = deferred_assets[&patch_path].parse()?;
-        patch(&mut asset)?;
-        write_asset(&mut mod_pak, asset, patch_path)?;
+        let mut asset = deferred_assets[&patch_path]
+            .parse()
+            .map_err(|e| IntegrationErr {
+                mod_ctxt: None,
+                kind: IntegrationErrKind::Generic(e),
+            })?;
+        patch(&mut asset).map_err(|e| IntegrationErr {
+            mod_ctxt: None,
+            kind: IntegrationErrKind::Generic(e),
+        })?;
+        write_asset(&mut mod_pak, asset, patch_path).map_err(|e| IntegrationErr {
+            mod_ctxt: None,
+            kind: IntegrationErrKind::Generic(e),
+        })?;
     }
 
     let mut int_pak_reader = Cursor::new(include_bytes!("../assets/integration.pak"));
-    let int_pak = repak::PakReader::new_any(&mut int_pak_reader, None)?;
+    let int_pak = repak::PakBuilder::new()
+        .reader(&mut int_pak_reader)
+        .map_err(|e| IntegrationErr {
+            mod_ctxt: None,
+            kind: IntegrationErrKind::Repak(e),
+        })?;
 
     let mount = Path::new(int_pak.mount_point());
     let files = int_pak.files();
@@ -394,17 +494,43 @@ pub fn integrate<P: AsRef<Path>>(path_pak: P, mods: Vec<(ModInfo, PathBuf)>) -> 
     for (p, new_path) in int_files {
         write_file(
             &mut mod_pak,
-            &int_pak.get(&p, &mut int_pak_reader)?,
+            &int_pak
+                .get(&p, &mut int_pak_reader)
+                .map_err(|e| IntegrationErr {
+                    mod_ctxt: None,
+                    kind: IntegrationErrKind::Repak(e),
+                })?,
             new_path,
-        )?;
+        )
+        .map_err(|e| IntegrationErr {
+            mod_ctxt: None,
+            kind: IntegrationErrKind::Generic(e),
+        })?;
     }
 
-    let mut int_asset = unreal_asset::Asset::new(
-        Cursor::new(int_pak.get(int_path.0, &mut int_pak_reader)?),
-        Some(Cursor::new(int_pak.get(int_path.1, &mut int_pak_reader)?)),
-        unreal_asset::engine_version::EngineVersion::VER_UE4_27,
-        None,
-    )?;
+    let mut int_asset =
+        unreal_asset::Asset::new(
+            Cursor::new(int_pak.get(int_path.0, &mut int_pak_reader).map_err(|e| {
+                IntegrationErr {
+                    mod_ctxt: None,
+                    kind: IntegrationErrKind::Repak(e),
+                }
+            })?),
+            Some(Cursor::new(
+                int_pak
+                    .get(int_path.1, &mut int_pak_reader)
+                    .map_err(|e| IntegrationErr {
+                        mod_ctxt: None,
+                        kind: IntegrationErrKind::Repak(e),
+                    })?,
+            )),
+            unreal_asset::engine_version::EngineVersion::VER_UE4_27,
+            None,
+        )
+        .map_err(|e| IntegrationErr {
+            mod_ctxt: None,
+            kind: IntegrationErrKind::UnrealAsset(e),
+        })?;
 
     inject_init_actors(
         &mut int_asset,
@@ -415,14 +541,38 @@ pub fn integrate<P: AsRef<Path>>(path_pak: P, mods: Vec<(ModInfo, PathBuf)>) -> 
 
     let mut int_out = (Cursor::new(vec![]), Cursor::new(vec![]));
 
-    int_asset.write_data(&mut int_out.0, Some(&mut int_out.1))?;
-    int_out.0.rewind()?;
-    int_out.1.rewind()?;
+    int_asset
+        .write_data(&mut int_out.0, Some(&mut int_out.1))
+        .map_err(|e| IntegrationErr {
+            mod_ctxt: None,
+            kind: IntegrationErrKind::UnrealAsset(e),
+        })?;
+    int_out.0.rewind().map_err(|e| IntegrationErr {
+        mod_ctxt: None,
+        kind: IntegrationErrKind::Generic(e.into()),
+    })?;
+    int_out.1.rewind().map_err(|e| IntegrationErr {
+        mod_ctxt: None,
+        kind: IntegrationErrKind::Generic(e.into()),
+    })?;
 
-    write_file(&mut mod_pak, &mut int_out.0.into_inner(), int_path.0)?;
-    write_file(&mut mod_pak, &mut int_out.1.into_inner(), int_path.1)?;
+    write_file(&mut mod_pak, &mut int_out.0.into_inner(), int_path.0).map_err(|e| {
+        IntegrationErr {
+            mod_ctxt: None,
+            kind: IntegrationErrKind::Generic(e),
+        }
+    })?;
+    write_file(&mut mod_pak, &mut int_out.1.into_inner(), int_path.1).map_err(|e| {
+        IntegrationErr {
+            mod_ctxt: None,
+            kind: IntegrationErrKind::Generic(e),
+        }
+    })?;
 
-    mod_pak.write_index()?;
+    mod_pak.write_index().map_err(|e| IntegrationErr {
+        mod_ctxt: None,
+        kind: IntegrationErrKind::Repak(e),
+    })?;
 
     info!(
         "{} mods installed to {}",

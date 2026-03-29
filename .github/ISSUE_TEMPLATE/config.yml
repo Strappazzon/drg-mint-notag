@@ -1,0 +1,22 @@
+blank_issues_enabled: false
+
+contact_links:
+  - name: Contributing Guidelines
+    url: https://github.com/Strappazzon/drg-mint-notag/blob/-/.github/CONTRIBUTING.md
+    about: Please read through before making any contribution.
+
+  - name: Code of Conduct
+    url: https://github.com/Strappazzon/.github/blob/-/CODE_OF_CONDUCT.md
+    about: Please make sure to adhere to the code of conduct.
+
+  - name: Discussions
+    url: https://github.com/Strappazzon/drg-mint-notag/discussions/categories/questions
+    about: Ask questions here.
+
+  - name: Support
+    url: https://github.com/Strappazzon/drg-mint-notag/blob/-/SUPPORT.md
+    about: Support resources.
+
+  - name: Security Policy
+    url: https://github.com/Strappazzon/.github/blob/-/SECURITY.md
+    about: See instructions to privately disclose any security issue.

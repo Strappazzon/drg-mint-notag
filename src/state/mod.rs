@@ -8,17 +8,20 @@ use std::{
 };
 
 use anyhow::{bail, Context, Result};
-use directories::ProjectDirs;
+use mint_lib::DRGInstallation;
+use serde::{Deserialize, Serialize};
 
 use crate::{
+    gui::GuiTheme,
     providers::{ModSpecification, ModStore},
-    DRGInstallation,
+    Dirs,
 };
+use crate::{gui::SortBy};
 
 use self::config::ConfigWrapper;
 
 /// Mod configuration, holds ModSpecification as well as other metadata
-#[derive(Debug, Clone, Hash, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Hash, Serialize, Deserialize)]
 pub struct ModConfig {
     pub spec: ModSpecification,
     pub required: bool,
@@ -31,7 +34,7 @@ fn default_true() -> bool {
     true
 }
 
-#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ModGroup {
     pub mods: Vec<ModConfig>,
 }
@@ -39,7 +42,7 @@ pub struct ModGroup {
 #[obake::versioned]
 #[obake(version("0.0.0"))]
 #[obake(version("0.1.0"))]
-#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ModProfile {
     #[obake(cfg("0.0.0"))]
     pub mods: Vec<ModConfig>,
@@ -49,7 +52,7 @@ pub struct ModProfile {
     pub mods: Vec<ModOrGroup>,
 }
 
-#[derive(Debug, Clone, Hash, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Hash, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum ModOrGroup {
     Group { group_name: String, enabled: bool },
@@ -66,7 +69,7 @@ impl From<ModProfile!["0.0.0"]> for ModProfile!["0.1.0"] {
 #[obake::versioned]
 #[obake(version("0.0.0"))]
 #[obake(version("0.1.0"))]
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ModData {
     pub active_profile: String,
     #[obake(cfg("0.0.0"))]
@@ -248,7 +251,7 @@ impl From<ModData!["0.0.0"]> for ModData!["0.1.0"] {
     }
 }
 
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "version")]
 pub enum VersionAnnotatedModData {
     #[serde(rename = "0.0.0")]
@@ -257,7 +260,7 @@ pub enum VersionAnnotatedModData {
     V0_1_0(ModData!["0.1.0"]),
 }
 
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum MaybeVersionedModData {
     Versioned(VersionAnnotatedModData),
@@ -324,13 +327,30 @@ impl ModData!["0.1.0"] {
 
 #[obake::versioned]
 #[obake(version("0.0.0"))]
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Config {
     pub provider_parameters: HashMap<String, HashMap<String, String>>,
     pub drg_pak_path: Option<PathBuf>,
+    pub gui_theme: Option<GuiTheme>,
+    pub sorting_config: Option<SortingConfig>,
 }
 
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct SortingConfig {
+    pub sort_category: SortBy,
+    pub is_ascending: bool,
+}
+
+impl Default for SortingConfig {
+    fn default() -> Self {
+        Self {
+            sort_category: SortBy::Enabled,
+            is_ascending: true,
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "version")]
 pub enum VersionAnnotatedConfig {
     #[serde(rename = "0.0.0")]
@@ -339,7 +359,7 @@ pub enum VersionAnnotatedConfig {
     Unsupported,
 }
 
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum MaybeVersionedConfig {
     Versioned(VersionAnnotatedConfig),
@@ -385,40 +405,37 @@ impl Default for Config!["0.0.0"] {
             drg_pak_path: DRGInstallation::find()
                 .as_ref()
                 .map(DRGInstallation::main_pak),
+            gui_theme: None,
+            sorting_config: None,
         }
     }
 }
 
 pub struct State {
-    pub project_dirs: ProjectDirs,
+    pub dirs: Dirs,
     pub config: ConfigWrapper<VersionAnnotatedConfig>,
     pub mod_data: ConfigWrapper<VersionAnnotatedModData>,
     pub store: Arc<ModStore>,
 }
 
 impl State {
-    pub fn init() -> Result<Self> {
-        let project_dirs = ProjectDirs::from("", "", "drg-mod-integration")
-            .context("constructing project dirs")?;
-        std::fs::create_dir_all(project_dirs.cache_dir())?;
-        std::fs::create_dir_all(project_dirs.config_dir())?;
-
-        let config_path = project_dirs.config_dir().join("config.json");
+    pub fn init(dirs: Dirs) -> Result<Self> {
+        let config_path = dirs.config_dir.join("config.json");
 
         let config = read_config_or_default(&config_path)?;
         let config = ConfigWrapper::<VersionAnnotatedConfig>::new(&config_path, config);
         config.save().unwrap();
 
-        let legacy_mod_profiles_path = project_dirs.config_dir().join("profiles.json");
-        let mod_data_path = project_dirs.config_dir().join("mod_data.json");
+        let legacy_mod_profiles_path = dirs.config_dir.join("profiles.json");
+        let mod_data_path = dirs.config_dir.join("mod_data.json");
         let mod_data = read_mod_data_or_default(&mod_data_path, legacy_mod_profiles_path)?;
         let mod_data = ConfigWrapper::<VersionAnnotatedModData>::new(mod_data_path, mod_data);
         mod_data.save().unwrap();
 
-        let store = ModStore::new(project_dirs.cache_dir(), &config.provider_parameters)?.into();
+        let store = ModStore::new(&dirs.cache_dir, &config.provider_parameters)?.into();
 
         Ok(Self {
-            project_dirs,
+            dirs,
             config,
             mod_data,
             store,
@@ -440,6 +457,8 @@ fn read_config_or_default(config_path: &PathBuf) -> Result<VersionAnnotatedConfi
                     VersionAnnotatedConfig::V0_0_0(Config_v0_0_0 {
                         provider_parameters: legacy.provider_parameters,
                         drg_pak_path: legacy.drg_pak_path,
+                        gui_theme: None,
+                        sorting_config: None,
                     })
                 }
             }

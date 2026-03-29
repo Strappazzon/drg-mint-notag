@@ -14,116 +14,59 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result};
 
+use directories::ProjectDirs;
 use error::IntegrationError;
+use integrate::IntegrationErr;
 use providers::{ModResolution, ModSpecification, ProviderFactory, ReadSeek};
 use state::State;
 use tracing::{info, warn};
 
 #[derive(Debug)]
-pub enum DRGInstallationType {
-    Steam,
-    Xbox,
+pub struct Dirs {
+    pub config_dir: PathBuf,
+    pub cache_dir: PathBuf,
+    pub data_dir: PathBuf,
 }
 
-impl DRGInstallationType {
-    pub fn from_pak_path<P: AsRef<Path>>(pak: P) -> Result<Self> {
-        let pak_name = pak
-            .as_ref()
-            .file_name()
-            .context("failed to get pak file name")?
-            .to_string_lossy()
-            .to_lowercase();
-        Ok(match pak_name.as_str() {
-            "fsd-windowsnoeditor.pak" => Self::Steam,
-            "fsd-wingdk.pak" => Self::Xbox,
-            _ => bail!("unrecognized pak file name: {pak_name}"),
-        })
-    }
-    pub fn binaries_directory_name(&self) -> &'static str {
-        match self {
-            Self::Steam => "Win64",
-            Self::Xbox => "WinGDK",
-        }
-    }
-    pub fn main_pak_name(&self) -> &'static str {
-        match self {
-            Self::Steam => "FSD-WindowsNoEditor.pak",
-            Self::Xbox => "FSD-WinGDK.pak",
-        }
-    }
-    pub fn hook_dll_name(&self) -> &'static str {
-        match self {
-            Self::Steam => "x3daudio1_7.dll",
-            Self::Xbox => "d3d9.dll",
-        }
-    }
-}
+impl Dirs {
+    pub fn default_xdg() -> Result<Self> {
+        let legacy_dirs = ProjectDirs::from("", "", "drg-mod-integration")
+            .context("constructing project dirs")?;
 
-#[derive(Debug)]
-pub struct DRGInstallation {
-    pub root: PathBuf,
-    pub installation_type: DRGInstallationType,
-}
+        let project_dirs =
+            ProjectDirs::from("", "", "mint").context("constructing project dirs")?;
 
-impl DRGInstallation {
-    /// Returns first DRG installation found. Only supports Steam version
-    /// TODO locate Xbox version
-    pub fn find() -> Option<Self> {
-        steamlocate::SteamDir::locate()
-            .and_then(|mut steamdir| {
-                steamdir
-                    .app(&548430)
-                    .map(|a| a.path.join("FSD/Content/Paks/FSD-WindowsNoEditor.pak"))
-            })
-            .and_then(|path| Self::from_pak_path(path).ok())
+        Self::from_paths(
+            Some(legacy_dirs.config_dir())
+                .filter(|p| p.exists())
+                .unwrap_or(project_dirs.config_dir()),
+            Some(legacy_dirs.cache_dir())
+                .filter(|p| p.exists())
+                .unwrap_or(project_dirs.cache_dir()),
+            Some(legacy_dirs.data_dir())
+                .filter(|p| p.exists())
+                .unwrap_or(project_dirs.data_dir()),
+        )
     }
-    pub fn from_pak_path<P: AsRef<Path>>(pak: P) -> Result<Self> {
-        let root = pak
-            .as_ref()
-            .parent()
-            .and_then(Path::parent)
-            .and_then(Path::parent)
-            .context("failed to get pak parent directory")?
-            .to_path_buf();
+    pub fn from_path<P: AsRef<Path>>(path: P) -> Result<Self> {
+        Self::from_paths(
+            path.as_ref().join("config"),
+            path.as_ref().join("cache"),
+            path.as_ref().join("data"),
+        )
+    }
+    fn from_paths<P: AsRef<Path>>(config_dir: P, cache_dir: P, data_dir: P) -> Result<Self> {
+        std::fs::create_dir_all(&config_dir)?;
+        std::fs::create_dir_all(&cache_dir)?;
+        std::fs::create_dir_all(&data_dir)?;
+
         Ok(Self {
-            root,
-            installation_type: DRGInstallationType::from_pak_path(pak)?,
+            config_dir: config_dir.as_ref().to_path_buf(),
+            cache_dir: cache_dir.as_ref().to_path_buf(),
+            data_dir: data_dir.as_ref().to_path_buf(),
         })
-    }
-    pub fn binaries_directory(&self) -> PathBuf {
-        self.root
-            .join("Binaries")
-            .join(self.installation_type.binaries_directory_name())
-    }
-    pub fn paks_path(&self) -> PathBuf {
-        self.root.join("Content").join("Paks")
-    }
-    pub fn main_pak(&self) -> PathBuf {
-        self.root
-            .join("Content")
-            .join("Paks")
-            .join(self.installation_type.main_pak_name())
-    }
-    pub fn modio_directory(&self) -> Option<PathBuf> {
-        match self.installation_type {
-            DRGInstallationType::Steam => {
-                #[cfg(target_os = "windows")]
-                {
-                    Some(PathBuf::from("C:\\Users\\Public\\mod.io\\2475"))
-                }
-                #[cfg(target_os = "linux")]
-                {
-                    steamlocate::SteamDir::locate().map(|s| {
-                        s.path.join(
-                            "steamapps/compatdata/548430/pfx/drive_c/users/Public/mod.io/2475",
-                        )
-                    })
-                }
-            }
-            DRGInstallationType::Xbox => None,
-        }
     }
 }
 
@@ -146,7 +89,7 @@ pub fn write_file<P: AsRef<Path>, C: AsRef<[u8]>>(path: P, data: C) -> Result<()
 
 pub fn is_drg_pak<P: AsRef<Path>>(path: P) -> Result<()> {
     let mut reader = std::io::BufReader::new(open_file(path)?);
-    let pak = repak::PakReader::new_any(&mut reader, None)?;
+    let pak = repak::PakBuilder::new().reader(&mut reader)?;
     pak.get("FSD/FSD.uproject", &mut reader)?;
     Ok(())
 }
@@ -156,8 +99,15 @@ pub async fn resolve_unordered_and_integrate<P: AsRef<Path>>(
     state: &State,
     mod_specs: &[ModSpecification],
     update: bool,
-) -> Result<()> {
-    let mods = state.store.resolve_mods(mod_specs, update).await?;
+) -> Result<(), IntegrationErr> {
+    let mods = state
+        .store
+        .resolve_mods(mod_specs, update)
+        .await
+        .map_err(|e| IntegrationErr {
+            mod_ctxt: None,
+            kind: integrate::IntegrationErrKind::Generic(e),
+        })?;
 
     let mods_set = mod_specs
         .iter()
@@ -191,7 +141,14 @@ pub async fn resolve_unordered_and_integrate<P: AsRef<Path>>(
         .collect::<Vec<_>>();
 
     info!("fetching mods...");
-    let paths = state.store.fetch_mods(&urls, update, None).await?;
+    let paths = state
+        .store
+        .fetch_mods(&urls, update, None)
+        .await
+        .map_err(|e| IntegrationErr {
+            mod_ctxt: None,
+            kind: integrate::IntegrationErrKind::Generic(e),
+        })?;
 
     integrate::integrate(game_path, to_integrate.into_iter().zip(paths).collect())
 }
@@ -256,9 +213,34 @@ where
     loop {
         match resolve_unordered_and_integrate(&game_path, state, mod_specs, update).await {
             Ok(()) => return Ok(()),
-            Err(e) => match e.downcast::<IntegrationError>() {
-                Ok(IntegrationError::NoProvider { url, factory }) => init(state, url, factory)?,
-                Err(e) => return Err(e),
+            Err(IntegrationErr { mod_ctxt, kind }) => match kind {
+                integrate::IntegrationErrKind::Generic(e) => match e.downcast::<IntegrationError>()
+                {
+                    Ok(IntegrationError::NoProvider { url, factory }) => init(state, url, factory)?,
+                    Err(e) => {
+                        return Err(if let Some(mod_ctxt) = mod_ctxt {
+                            e.context(format!("while working with mod `{:?}`", mod_ctxt))
+                        } else {
+                            e
+                        })
+                    }
+                },
+                integrate::IntegrationErrKind::Repak(e) => {
+                    return Err(if let Some(mod_ctxt) = mod_ctxt {
+                        anyhow::Error::from(e)
+                            .context(format!("while working with mod `{:?}`", mod_ctxt))
+                    } else {
+                        e.into()
+                    })
+                }
+                integrate::IntegrationErrKind::UnrealAsset(e) => {
+                    return Err(if let Some(mod_ctxt) = mod_ctxt {
+                        anyhow::Error::from(e)
+                            .context(format!("while working with mod `{:?}`", mod_ctxt))
+                    } else {
+                        e.into()
+                    })
+                }
             },
         }
     }
@@ -303,7 +285,7 @@ pub(crate) fn get_pak_from_data(mut data: Box<dyn ReadSeek>) -> Result<Box<dyn R
                 }
             })
             .find_map(Result::transpose)
-            .context("Zip does not contain pak")?
+            .context("zip does not contain pak")?
     } else {
         data.rewind()?;
         Ok(data)

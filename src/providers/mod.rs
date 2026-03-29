@@ -9,6 +9,7 @@ use crate::write_file;
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc::Sender;
+use tracing::info;
 
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::io::{Read, Seek};
@@ -202,7 +203,7 @@ impl ModStore {
         loop {
             match self
                 .get_provider(&spec.url)?
-                .resolve_mod(&spec, update, self.cache.clone(), &self.blob_cache.clone())
+                .resolve_mod(&spec, update, self.cache.clone())
                 .await?
             {
                 ModResponse::Resolve(m) => {
@@ -266,6 +267,15 @@ impl ModStore {
             .await
     }
 
+    pub async fn update_cache(&self) -> Result<()> {
+        let providers = self.providers.read().unwrap().clone();
+        for (name, provider) in providers.iter() {
+            info!("updating cache for {name} provider");
+            provider.update_cache(self.cache.clone()).await?;
+        }
+        Ok(())
+    }
+
     pub fn get_mod_info(&self, spec: &ModSpecification) -> Option<ModInfo> {
         self.get_provider(&spec.url)
             .ok()?
@@ -294,7 +304,8 @@ fn read_cache_metadata_or_default(cache_metadata_path: &PathBuf) -> Result<Versi
                 .as_object_mut()
                 .context("failed to deserialize cache metadata into object map")?;
             let version = obj_map.remove("version");
-            if let Some(v) = version && let serde_json::Value::String(vs) = v
+            if let Some(v) = version
+                && let serde_json::Value::String(vs) = v
             {
                 match vs.as_str() {
                     "0.0.0" => {
@@ -302,8 +313,10 @@ fn read_cache_metadata_or_default(cache_metadata_path: &PathBuf) -> Result<Versi
                         // involving numeric keys in hashmaps, see
                         // <https://github.com/serde-rs/serde/issues/1183>.
                         match serde_json::from_slice::<Cache!["0.0.0"]>(&buf) {
-                            Ok(c) => MaybeVersionedCache::Versioned(VersionAnnotatedCache::V0_0_0(c)),
-                            Err(e) => Err(e).context("failed to deserialize cache as v0.0.0")?
+                            Ok(c) => {
+                                MaybeVersionedCache::Versioned(VersionAnnotatedCache::V0_0_0(c))
+                            }
+                            Err(e) => Err(e).context("failed to deserialize cache as v0.0.0")?,
                         }
                     }
                     _ => unimplemented!(),
@@ -313,7 +326,7 @@ fn read_cache_metadata_or_default(cache_metadata_path: &PathBuf) -> Result<Versi
                 // numeric keys in hashmaps, see <https://github.com/serde-rs/serde/issues/1183>.
                 match serde_json::from_slice::<HashMap<String, Box<dyn ModProviderCache>>>(&buf) {
                     Ok(c) => MaybeVersionedCache::Legacy(Cache_v0_0_0 { cache: c }),
-                    Err(e) => Err(e).context("failed to deserialize legacy cache")?
+                    Err(e) => Err(e).context("failed to deserialize legacy cache")?,
                 }
             }
         }
@@ -388,13 +401,13 @@ pub struct ModioTags {
     pub approval_status: ApprovalStatus,
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum RequiredStatus {
     RequiredByAll,
     Optional,
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum ApprovalStatus {
     Verified,
     Approved,
@@ -456,13 +469,12 @@ impl ModResolution {
 }
 
 #[async_trait::async_trait]
-pub trait ModProvider: Send + Sync + std::fmt::Debug {
+pub trait ModProvider: Send + Sync {
     async fn resolve_mod(
         &self,
         spec: &ModSpecification,
         update: bool,
         cache: ProviderCache,
-        blob_cache: &BlobCache,
     ) -> Result<ModResponse>;
     async fn fetch_mod(
         &self,
@@ -472,6 +484,7 @@ pub trait ModProvider: Send + Sync + std::fmt::Debug {
         blob_cache: &BlobCache,
         tx: Option<Sender<FetchProgress>>,
     ) -> Result<PathBuf>;
+    async fn update_cache(&self, cache: ProviderCache) -> Result<()>;
     /// Check if provider is configured correctly
     async fn check(&self) -> Result<()>;
     fn get_mod_info(&self, spec: &ModSpecification, cache: ProviderCache) -> Option<ModInfo>;

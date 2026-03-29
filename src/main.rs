@@ -5,16 +5,15 @@ use std::path::PathBuf;
 
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
-use directories::ProjectDirs;
 use tracing::{debug, info};
 use tracing_appender::non_blocking::WorkerGuard;
 use tracing_subscriber::filter;
 
-use drg_mod_integration::mod_lints::{run_lints, LintId};
-use drg_mod_integration::providers::ProviderFactory;
-use drg_mod_integration::{gui::gui, providers::ModSpecification, state::State, DRGInstallation};
-use drg_mod_integration::{
-    resolve_ordered_with_provider_init, resolve_unordered_and_integrate_with_provider_init,
+use mint::mod_lints::{run_lints, LintId};
+use mint::providers::ProviderFactory;
+use mint::{gui::gui, providers::ModSpecification, state::State};
+use mint::{
+    resolve_ordered_with_provider_init, resolve_unordered_and_integrate_with_provider_init, Dirs,
 };
 
 /// Command line integration tool.
@@ -92,51 +91,73 @@ enum Action {
 struct Args {
     #[command(subcommand)]
     action: Option<Action>,
+
+    /// Location to store configs and data
+    #[arg(long)]
+    appdata: Option<PathBuf>,
 }
 
 fn main() -> Result<()> {
+    #[cfg(target_os = "windows")]
+    {
+        // Try to enable ANSI code support on Windows 10 for console. If it fails, then whatever
+        // *shrugs*.
+        let _res = ansi_term::enable_ansi_support();
+    }
+
+    let args = Args::parse();
+
+    let dirs = args
+        .appdata
+        .as_ref()
+        .map(Dirs::from_path)
+        .unwrap_or_else(Dirs::default_xdg)?;
+
     std::env::set_var("RUST_BACKTRACE", "1");
-    let _guard = setup_logging()?;
+    let _guard = setup_logging(&dirs)?;
     debug!("logging setup complete");
+
+    info!("config dir = {}", dirs.config_dir.display());
+    info!("cache dir = {}", dirs.cache_dir.display());
+    info!("data dir = {}", dirs.data_dir.display());
 
     let rt = tokio::runtime::Runtime::new().expect("Unable to create Runtime");
     debug!("tokio runtime created");
     let _enter = rt.enter();
 
-    let args = Args::parse();
     debug!(?args);
 
     match args.action {
         Some(Action::Integrate(action)) => rt.block_on(async {
-            action_integrate(action).await?;
+            action_integrate(dirs, action).await?;
             Ok(())
         }),
         Some(Action::Profile(action)) => rt.block_on(async {
-            action_integrate_profile(action).await?;
+            action_integrate_profile(dirs, action).await?;
             Ok(())
         }),
         Some(Action::Launch(action)) => {
             std::thread::spawn(move || {
                 rt.block_on(std::future::pending::<()>());
             });
-            gui(Some(action.args))?;
+            gui(dirs, Some(action.args))?;
             Ok(())
         }
         Some(Action::Lint(action)) => rt.block_on(async {
-            action_lint(action).await?;
+            action_lint(dirs, action).await?;
             Ok(())
         }),
         None => {
             std::thread::spawn(move || {
                 rt.block_on(std::future::pending::<()>());
             });
-            gui(None)?;
+            gui(dirs, None)?;
             Ok(())
         }
     }
 }
 
-fn setup_logging() -> Result<WorkerGuard> {
+fn setup_logging(dirs: &Dirs) -> Result<WorkerGuard> {
     use tracing::metadata::LevelFilter;
     use tracing::Level;
     use tracing_subscriber::prelude::*;
@@ -163,18 +184,15 @@ fn setup_logging() -> Result<WorkerGuard> {
         }
     }
 
-    let project_dirs =
-        ProjectDirs::from("", "", "drg-mod-integration").context("constructing project dirs")?;
-    std::fs::create_dir_all(project_dirs.data_dir())?;
-
-    let f = File::create(project_dirs.data_dir().join("drg-mod-integration.log"))?;
+    let log_path = dirs.data_dir.join("mint.log");
+    let f = File::create(&log_path)?;
     let writer = BufWriter::new(f);
     let (log_file_appender, guard) = tracing_appender::non_blocking(writer);
     let debug_file_log = fmt::layer()
         .with_writer(log_file_appender)
         .fmt_fields(NewType(Pretty::default()))
         .with_ansi(false)
-        .with_filter(filter::Targets::new().with_target("drg_mod_integration", Level::DEBUG));
+        .with_filter(filter::Targets::new().with_target("mint", Level::DEBUG));
     let stderr_log = fmt::layer()
         .with_writer(std::io::stderr)
         .compact()
@@ -193,13 +211,7 @@ fn setup_logging() -> Result<WorkerGuard> {
     tracing::subscriber::set_global_default(subscriber)?;
 
     debug!("tracing subscriber setup");
-    info!(
-        "writing logs to `{}`",
-        project_dirs
-            .data_dir()
-            .join("drg-mod-integration.log")
-            .display()
-    );
+    info!("writing logs to {:?}", log_path.display());
 
     Ok(guard)
 }
@@ -227,18 +239,17 @@ fn init_provider(state: &mut State, url: String, factory: &ProviderFactory) -> R
     state.store.add_provider(factory, params)
 }
 
-async fn action_integrate(action: ActionIntegrate) -> Result<()> {
-    let game_pak_path = action
-        .fsd_pak
-        .or_else(|| {
-            DRGInstallation::find()
-                .as_ref()
-                .map(DRGInstallation::main_pak)
-        })
-        .context("Could not find DRG pak file, please specify manually with the --fsd_pak flag")?;
-    debug!(?game_pak_path);
+fn get_pak_path(state: &State, arg: &Option<PathBuf>) -> Result<PathBuf> {
+    arg.as_ref()
+        .or_else(|| state.config.drg_pak_path.as_ref())
+        .cloned()
+        .context("Could not find DRG pak file, please specify manually with the --fsd_pak flag")
+}
 
-    let mut state = State::init()?;
+async fn action_integrate(dirs: Dirs, action: ActionIntegrate) -> Result<()> {
+    let mut state = State::init(dirs)?;
+    let game_pak_path = get_pak_path(&state, &action.fsd_pak)?;
+    debug!(?game_pak_path);
 
     let mod_specs = action
         .mods
@@ -256,18 +267,10 @@ async fn action_integrate(action: ActionIntegrate) -> Result<()> {
     .await
 }
 
-async fn action_integrate_profile(action: ActionIntegrateProfile) -> Result<()> {
-    let game_pak_path = action
-        .fsd_pak
-        .or_else(|| {
-            DRGInstallation::find()
-                .as_ref()
-                .map(DRGInstallation::main_pak)
-        })
-        .context("Could not find DRG pak file, please specify manually with the --fsd_pak flag")?;
+async fn action_integrate_profile(dirs: Dirs, action: ActionIntegrateProfile) -> Result<()> {
+    let mut state = State::init(dirs)?;
+    let game_pak_path = get_pak_path(&state, &action.fsd_pak)?;
     debug!(?game_pak_path);
-
-    let mut state = State::init()?;
 
     let mut mods = Vec::new();
     state.mod_data.for_each_enabled_mod(&action.profile, |mc| {
@@ -284,18 +287,10 @@ async fn action_integrate_profile(action: ActionIntegrateProfile) -> Result<()> 
     .await
 }
 
-async fn action_lint(action: ActionLint) -> Result<()> {
-    let game_pak_path = action
-        .fsd_pak
-        .or_else(|| {
-            DRGInstallation::find()
-                .as_ref()
-                .map(DRGInstallation::main_pak)
-        })
-        .context("Could not find DRG pak file, please specify manually with the --fsd_pak flag")?;
+async fn action_lint(dirs: Dirs, action: ActionLint) -> Result<()> {
+    let mut state = State::init(dirs)?;
+    let game_pak_path = get_pak_path(&state, &action.fsd_pak)?;
     debug!(?game_pak_path);
-
-    let mut state = State::init()?;
 
     let mut mods = Vec::new();
     state.mod_data.for_each_mod(&action.profile, |mc| {
@@ -317,7 +312,7 @@ async fn action_lint(action: ActionLint) -> Result<()> {
                 LintId::NON_ASSET_FILES,
                 LintId::SPLIT_ASSET_PAIRS,
             ]),
-            BTreeSet::from_iter(mods.into_iter().zip(mod_paths)),
+            mods.into_iter().zip(mod_paths).collect(),
             Some(game_pak_path),
         )
     })

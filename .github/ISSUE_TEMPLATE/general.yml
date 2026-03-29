@@ -1,0 +1,38 @@
+name: Other Issue
+description: Issue not related to bugs.
+
+assignees:
+  - Strappazzon
+
+body:
+  - type: markdown
+    attributes:
+      value: >2
+        **NOTE:** If you are reporting a security issue, read the
+        [Security Policy](https://github.com/Strappazzon/.github/blob/-/SECURITY.md) instead of opening a public ticket.
+
+
+  - type: markdown
+    attributes:
+      value: Read the [Contributing Guidelines](https://github.com/Strappazzon/drg-mint-notag/blob/-/.github/CONTRIBUTING.md) before opening a ticket.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: Provide a description.
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checklist
+      description: Making sure you have read everything before submitting your ticket.
+      options:
+        - label: I agree to follow the [Code of Conduct](https://github.com/Strappazzon/.github/blob/-/CODE_OF_CONDUCT.md).
+          required: true
+        - label: I have read the [Contributing Guidelines](https://github.com/Strappazzon/drg-mint-notag/blob/-/.github/CONTRIBUTING.md).
+          required: true
+        - label: I have read the [Support Policy](https://github.com/Strappazzon/drg-mint-notag/blob/master/SUPPORT.md#support-policy).
+          required: true

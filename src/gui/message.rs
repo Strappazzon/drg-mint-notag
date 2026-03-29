@@ -13,8 +13,9 @@ use tokio::{
     sync::mpsc::{self, Sender},
     task::JoinHandle,
 };
-use tracing::{error, info};
+use tracing::{debug, error, info};
 
+use crate::integrate::{IntegrationErr, IntegrationErrKind};
 use crate::mod_lints::{LintId, LintReport};
 use crate::state::{ModData_v0_1_0 as ModData, ModOrGroup};
 use crate::{
@@ -23,6 +24,7 @@ use crate::{
     state::ModConfig,
 };
 
+use super::SelfUpdateProgress;
 use super::{
     request_counter::{RequestCounter, RequestID},
     App, GitHubRelease, LastActionStatus, SpecFetchProgress, WindowProviderParameters,
@@ -43,6 +45,9 @@ pub enum Message {
     UpdateCache(UpdateCache),
     CheckUpdates(CheckUpdates),
     LintMods(LintMods),
+    SelfUpdate(SelfUpdate),
+    FetchSelfUpdateProgress(FetchSelfUpdateProgress),
+    FetchModDetails(FetchModDetails),
 }
 
 impl Message {
@@ -54,6 +59,9 @@ impl Message {
             Self::UpdateCache(msg) => msg.receive(app),
             Self::CheckUpdates(msg) => msg.receive(app),
             Self::LintMods(msg) => msg.receive(app),
+            Self::SelfUpdate(msg) => msg.receive(app),
+            Self::FetchSelfUpdateProgress(msg) => msg.receive(app),
+            Self::FetchModDetails(msg) => msg.receive(app),
         }
     }
 }
@@ -151,7 +159,7 @@ impl ResolveMods {
                     app.resolve_mod.clear();
                     app.state.mod_data.save().unwrap();
                     app.last_action_status =
-                        LastActionStatus::Success("mods successfully resolved".to_string());
+                        LastActionStatus::Success("Mods successfully resolved".to_string());
                 }
                 Err(e) => match e.downcast::<IntegrationError>() {
                     Ok(IntegrationError::NoProvider { url: _, factory }) => {
@@ -174,7 +182,7 @@ impl ResolveMods {
 #[derive(Debug)]
 pub struct Integrate {
     rid: RequestID,
-    result: Result<()>,
+    result: Result<(), IntegrationErr>,
 }
 
 impl Integrate {
@@ -205,17 +213,36 @@ impl Integrate {
                 Ok(()) => {
                     info!("integration complete");
                     app.last_action_status =
-                        LastActionStatus::Success("integration complete".to_string());
+                        LastActionStatus::Success("DLL hook and mod bundle installed".to_string());
                 }
-                Err(e) => match e.downcast::<IntegrationError>() {
-                    Ok(IntegrationError::NoProvider { url: _, factory }) => {
-                        app.window_provider_parameters =
-                            Some(WindowProviderParameters::new(factory, &app.state));
-                        app.last_action_status =
-                            LastActionStatus::Failure("no provider".to_string());
+                Err(IntegrationErr { mod_ctxt, kind }) => match kind {
+                    IntegrationErrKind::Generic(e) => match e.downcast::<IntegrationError>() {
+                        Ok(IntegrationError::NoProvider { url: _, factory }) => {
+                            app.window_provider_parameters =
+                                Some(WindowProviderParameters::new(factory, &app.state));
+                            app.last_action_status =
+                                LastActionStatus::Failure("no provider".to_string());
+                        }
+                        Err(e) => {
+                            match mod_ctxt {
+                                        Some(mod_ctxt) => error!("error encountered during integration while working with mod `{:?}`\n{:#?}\n{}", mod_ctxt, e, e.backtrace()),
+                                        None => error!("{:#?}\n{}", e, e.backtrace()),
+                                    };
+                            app.last_action_status = LastActionStatus::Failure(e.to_string());
+                        }
+                    },
+                    IntegrationErrKind::Repak(e) => {
+                        match mod_ctxt {
+                                Some(mod_ctxt) => error!("`repak` error encountered during integration while working with mod `{:?}`\n{:#?}", mod_ctxt, e),
+                                None => error!("`repak` error encountered during integration: {:#?}", e),
+                            };
+                        app.last_action_status = LastActionStatus::Failure(e.to_string());
                     }
-                    Err(e) => {
-                        error!("{:#?}\n{}", e, e.backtrace());
+                    IntegrationErrKind::UnrealAsset(e) => {
+                        match mod_ctxt {
+                                Some(mod_ctxt) => error!("`unreal_asset` error encountered during integration while working with mod `{:?}`\n{:#?}", mod_ctxt, e),
+                                None => error!("`unreal_asset` error encountered during integration: {:#?}", e),
+                            };
                         app.last_action_status = LastActionStatus::Failure(e.to_string());
                     }
                 },
@@ -249,12 +276,12 @@ pub struct UpdateCache {
 }
 
 impl UpdateCache {
-    pub fn send(app: &mut App, mod_specs: Vec<ModSpecification>) {
+    pub fn send(app: &mut App) {
         let rid = app.request_counter.next();
         let tx = app.tx.clone();
         let store = app.state.store.clone();
         let handle = tokio::spawn(async move {
-            let res = store.resolve_mods(&mod_specs, true).await.map(|_| ());
+            let res = store.update_cache().await;
             tx.send(Message::UpdateCache(UpdateCache { rid, result: res }))
                 .await
                 .unwrap();
@@ -273,7 +300,7 @@ impl UpdateCache {
                 Ok(()) => {
                     info!("cache update complete");
                     app.last_action_status =
-                        LastActionStatus::Success("successfully updated cache".to_string());
+                        LastActionStatus::Success("Cache updated".to_string());
                 }
                 Err(e) => match e.downcast::<IntegrationError>() {
                     // TODO make provider initializing more generic
@@ -308,9 +335,9 @@ impl CheckUpdates {
 
         async fn req() -> Result<GitHubRelease> {
             Ok(reqwest::Client::builder()
-                .user_agent("trumank/drg-mod-integration")
+                .user_agent("Strappazzon/drg-mint-notag")
                 .build()?
-                .get("https://api.github.com/repos/trumank/drg-mod-integration/releases/latest")
+                .get("https://api.github.com/repos/Strappazzon/drg-mint-notag/releases/latest")
                 .send()
                 .await?
                 .json::<GitHubRelease>()
@@ -360,10 +387,16 @@ async fn integrate_async(
     fsd_pak: PathBuf,
     rid: RequestID,
     message_tx: Sender<Message>,
-) -> Result<()> {
+) -> Result<(), IntegrationErr> {
     let update = false;
 
-    let mods = store.resolve_mods(&mod_specs, update).await?;
+    let mods = store
+        .resolve_mods(&mod_specs, update)
+        .await
+        .map_err(|e| IntegrationErr {
+            mod_ctxt: None,
+            kind: IntegrationErrKind::Generic(e),
+        })?;
 
     let to_integrate = mod_specs
         .iter()
@@ -396,12 +429,22 @@ async fn integrate_async(
         }
     });
 
-    let paths = store.fetch_mods(&urls, update, Some(tx)).await?;
+    let paths = store
+        .fetch_mods(&urls, update, Some(tx))
+        .await
+        .map_err(|e| IntegrationErr {
+            mod_ctxt: None,
+            kind: IntegrationErrKind::Generic(e),
+        })?;
 
     tokio::task::spawn_blocking(|| {
         crate::integrate::integrate(fsd_pak, to_integrate.into_iter().zip(paths).collect())
     })
-    .await??;
+    .await
+    .map_err(|e| IntegrationErr {
+        mod_ctxt: None,
+        kind: IntegrationErrKind::Generic(e.into()),
+    })??;
 
     Ok(())
 }
@@ -434,7 +477,7 @@ impl LintMods {
                 Ok(pairs) => tokio::task::spawn_blocking(move || {
                     crate::mod_lints::run_lints(
                         &enabled_lints,
-                        BTreeSet::from_iter(pairs),
+                        pairs.into_iter().collect(),
                         game_pak_path,
                     )
                 })
@@ -465,7 +508,7 @@ impl LintMods {
                     info!("lint mod report complete");
                     app.lint_report = Some(report);
                     app.last_action_status =
-                        LastActionStatus::Success("lint mod report complete".to_string());
+                        LastActionStatus::Success("Mod lint report complete".to_string());
                 }
                 Err(e) => match e.downcast::<IntegrationError>() {
                     Ok(IntegrationError::NoProvider { url: _, factory }) => {
@@ -528,4 +571,284 @@ async fn resolve_async_ordered(
     });
 
     store.fetch_mods_ordered(&urls, update, Some(tx)).await
+}
+
+#[derive(Debug)]
+pub struct SelfUpdate {
+    rid: RequestID,
+    result: Result<PathBuf>,
+}
+
+impl SelfUpdate {
+    pub fn send(
+        rc: &mut RequestCounter,
+        tx: Sender<Message>,
+        ctx: egui::Context,
+    ) -> MessageHandle<SelfUpdateProgress> {
+        let rid = rc.next();
+        MessageHandle {
+            rid,
+            handle: tokio::task::spawn(async move {
+                let result = self_update_async(ctx.clone(), rid, tx.clone()).await;
+                tx.send(Message::SelfUpdate(SelfUpdate { rid, result }))
+                    .await
+                    .unwrap();
+                ctx.request_repaint();
+            }),
+            state: SelfUpdateProgress::Pending,
+        }
+    }
+
+    fn receive(self, app: &mut App) {
+        if Some(self.rid) == app.self_update_rid.as_ref().map(|r| r.rid) {
+            match self.result {
+                Ok(original_exe_path) => {
+                    info!("self update complete");
+                    app.original_exe_path = Some(original_exe_path);
+                    app.last_action_status =
+                        LastActionStatus::Success("Self update complete".to_string());
+                }
+                Err(e) => {
+                    error!("self update failed");
+                    error!("{:#?}", e);
+                    app.self_update_rid = None;
+                    app.last_action_status =
+                        LastActionStatus::Failure("Self update failed".to_string());
+                }
+            }
+            app.integrate_rid = None;
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct FetchSelfUpdateProgress {
+    rid: RequestID,
+    progress: SelfUpdateProgress,
+}
+
+impl FetchSelfUpdateProgress {
+    fn receive(self, app: &mut App) {
+        if let Some(MessageHandle { rid, state, .. }) = &mut app.self_update_rid {
+            if *rid == self.rid {
+                *state = self.progress;
+            }
+        }
+    }
+}
+
+async fn self_update_async(
+    ctx: egui::Context,
+    rid: RequestID,
+    message_tx: Sender<Message>,
+) -> Result<PathBuf> {
+    use futures::stream::TryStreamExt;
+    use tokio::io::AsyncWriteExt;
+
+    let (tx, mut rx) = mpsc::channel::<SelfUpdateProgress>(1);
+
+    tokio::spawn(async move {
+        while let Some(progress) = rx.recv().await {
+            message_tx
+                .send(Message::FetchSelfUpdateProgress(FetchSelfUpdateProgress {
+                    rid,
+                    progress,
+                }))
+                .await
+                .unwrap();
+            ctx.request_repaint();
+        }
+    });
+
+    let client = reqwest::Client::new();
+
+    let asset_name = if cfg!(target_os = "windows") {
+        "mint-x86_64-pc-windows-msvc.zip"
+    } else if cfg!(target_os = "linux") {
+        "mint-x86_64-unknown-linux-gnu.zip"
+    } else {
+        unimplemented!("unsupported platform");
+    };
+
+    info!("downloading update");
+
+    let response = client
+        .get(format!(
+            "https://github.com/Strappazzon/drg-mint-notag/releases/latest/download/{asset_name}"
+        ))
+        .send()
+        .await?
+        .error_for_status()?;
+    let size = response.content_length();
+    debug!(?response);
+    debug!(?size);
+
+    let tmp_dir = tempfile::Builder::new()
+        .prefix("self_update")
+        .tempdir_in(std::env::current_dir()?)?;
+    let tmp_archive_path = tmp_dir.path().join(asset_name);
+    let mut tmp_archive = tokio::fs::File::create(&tmp_archive_path).await?;
+    let mut stream = response.bytes_stream();
+
+    let mut total_bytes_written = 0;
+    while let Some(bytes) = stream.try_next().await? {
+        let bytes_written = tmp_archive.write(&bytes).await?;
+        total_bytes_written += bytes_written;
+        if let Some(size) = size {
+            tx.send(SelfUpdateProgress::Progress {
+                progress: total_bytes_written as u64,
+                size,
+            })
+            .await
+            .unwrap();
+        }
+    }
+
+    debug!(?tmp_dir);
+    debug!(?tmp_archive_path);
+    debug!(?tmp_archive);
+
+    let original_exe_path = tokio::task::spawn_blocking(move || -> Result<PathBuf> {
+        let bin_name = if cfg!(target_os = "windows") {
+            "mint.exe"
+        } else if cfg!(target_os = "linux") {
+            "mint"
+        } else {
+            unimplemented!("unsupported platform");
+        };
+
+        info!("extracting downloaded update archive");
+        self_update::Extract::from_source(&tmp_archive_path)
+            .archive(self_update::ArchiveKind::Zip)
+            .extract_file(tmp_dir.path(), bin_name)?;
+
+        info!("replacing old executable with new executable");
+        let tmp_file = tmp_dir.path().join("replacement_tmp");
+        let bin_path = tmp_dir.path().join(bin_name);
+
+        let original_exe_path = std::env::current_exe()?;
+
+        self_update::Move::from_source(&bin_path)
+            .replace_using_temp(&tmp_file)
+            .to_dest(&original_exe_path)?;
+
+        #[cfg(target_os = "linux")]
+        {
+            info!("setting executable permission on new executable");
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&original_exe_path, std::fs::Permissions::from_mode(0o755))
+                .unwrap();
+        }
+
+        Ok(original_exe_path)
+    })
+    .await??;
+
+    tx.send(SelfUpdateProgress::Complete).await.unwrap();
+
+    info!("update successful");
+
+    Ok(original_exe_path)
+}
+
+#[derive(Debug)]
+pub struct FetchModDetails {
+    rid: RequestID,
+    modio_id: u32,
+    result: Result<ModDetails>,
+}
+
+#[derive(Debug)]
+pub struct ModDetails {
+    pub r#mod: modio::mods::Mod,
+    pub versions: Vec<modio::files::File>,
+    pub thumbnail: Vec<u8>,
+}
+
+impl FetchModDetails {
+    pub fn send(
+        rc: &mut RequestCounter,
+        ctx: &egui::Context,
+        tx: Sender<Message>,
+        oauth_token: &str,
+        modio_id: u32,
+    ) -> MessageHandle<()> {
+        let rid = rc.next();
+        let ctx = ctx.clone();
+        let oauth_token = oauth_token.to_string();
+
+        MessageHandle {
+            rid,
+            handle: tokio::task::spawn(async move {
+                let result = fetch_modio_mod_details(oauth_token, modio_id).await;
+                tx.send(Message::FetchModDetails(FetchModDetails {
+                    rid,
+                    result,
+                    modio_id,
+                }))
+                .await
+                .unwrap();
+                ctx.request_repaint();
+            }),
+            state: (),
+        }
+    }
+
+    fn receive(self, app: &mut App) {
+        let mut to_remove = None;
+
+        if let Some(req) = app.fetch_mod_details_rid.get(&self.modio_id)
+            && req.rid == self.rid
+        {
+            match self.result {
+                Ok(mod_details) => {
+                    info!("fetch mod details successful");
+                    app.mod_details.insert(mod_details.r#mod.id, mod_details);
+                    app.last_action_status =
+                        LastActionStatus::Success("Fetched mod details".to_string());
+                }
+                Err(e) => {
+                    error!("fetch mod details failed");
+                    error!("{:#?}", e);
+                    to_remove = Some(self.modio_id);
+                    app.last_action_status =
+                        LastActionStatus::Failure("Failed to fetch mod details".to_string());
+                }
+            }
+        }
+
+        if let Some(id) = to_remove {
+            app.fetch_mod_details_rid.remove(&id);
+        }
+    }
+}
+
+async fn fetch_modio_mod_details(oauth_token: String, modio_id: u32) -> Result<ModDetails> {
+    use crate::providers::modio::{LoggingMiddleware, MODIO_DRG_ID};
+    use modio::{filter::prelude::*, Credentials, Modio};
+
+    let credentials = Credentials::with_token("", oauth_token);
+    let client = reqwest_middleware::ClientBuilder::new(reqwest::Client::new())
+        .with::<LoggingMiddleware>(Default::default())
+        .build();
+    let modio = Modio::new(credentials, client.clone())?;
+    let mod_ref = modio.mod_(MODIO_DRG_ID, modio_id);
+    let r#mod = mod_ref.clone().get().await?;
+
+    let filter = with_limit(10).order_by(modio::user::filters::files::Version::desc());
+    let versions = mod_ref.clone().files().search(filter).first_page().await?;
+
+    let thumbnail = client
+        .get(r#mod.logo.thumb_320x180.clone())
+        .send()
+        .await?
+        .bytes()
+        .await?
+        .to_vec();
+
+    Ok(ModDetails {
+        r#mod,
+        versions,
+        thumbnail,
+    })
 }

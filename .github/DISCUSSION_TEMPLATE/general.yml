@@ -1,0 +1,22 @@
+labels:
+  - "discussion"
+
+body:
+  - type: markdown
+    attributes:
+      value: >2
+        **NOTE:** If you are reporting a security issue, read the
+        [Security Policy](https://github.com/Strappazzon/.github/blob/-/SECURITY.md) instead of opening a public discussion.
+
+
+  - type: markdown
+    attributes:
+      value: |2
+        Make sure to adhere to the [Code of Conduct](https://github.com/Strappazzon/.github/blob/-/CODE_OF_CONDUCT.md) before creating a discussion.
+
+  - type: textarea
+    attributes:
+      label: Body
+      description: Start your discussion.
+    validations:
+      required: true

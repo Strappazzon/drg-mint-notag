@@ -1,3 +1,6 @@
-/target
+# Build output
 /hook/target
-/.idea
+/target
+
+# Windows
+[Dd]esktop.ini

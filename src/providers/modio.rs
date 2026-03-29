@@ -1,8 +1,12 @@
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
+use std::time::{SystemTime, UNIX_EPOCH};
 
-use anyhow::{anyhow, bail, Context, Result};
+#[cfg(test)]
+use mockall::{automock, predicate::*};
+
+use anyhow::{bail, Context, Result};
 use reqwest::{Request, Response};
 use reqwest_middleware::{Middleware, Next};
 use serde::{Deserialize, Serialize};
@@ -15,18 +19,19 @@ use super::{
     ModResolution, ModResponse, ModSpecification, ModioTags, ProviderCache, RequiredStatus,
 };
 
-lazy_static::lazy_static! {
-    static ref RE_MOD: regex::Regex = regex::Regex::new("^https://mod.io/g/drg/m/(?P<name_id>[^/#]+)(:?#(?P<mod_id>\\d+)(:?/(?P<modfile_id>\\d+))?)?$").unwrap();
+static RE_MOD: OnceLock<regex::Regex> = OnceLock::new();
+fn re_mod() -> &'static regex::Regex {
+    RE_MOD.get_or_init(|| regex::Regex::new("^https://mod\\.io/g/drg/m/(?P<name_id>[^/#]+)(?:#(?:(?P<mod_id>\\d+)(?:/(?P<modfile_id>\\d+))?|[a-z]+))?$").unwrap())
 }
 
-const MODIO_DRG_ID: u32 = 2475;
+pub(crate) const MODIO_DRG_ID: u32 = 2475;
 const MODIO_PROVIDER_ID: &str = "modio";
 
 inventory::submit! {
     super::ProviderFactory {
         id: MODIO_PROVIDER_ID,
-        new: ModioProvider::new_provider,
-        can_provide: |url| RE_MOD.is_match(url),
+        new: ModioProvider::<modio::Modio>::new_provider,
+        can_provide: |url| re_mod().is_match(url),
         parameters: &[
             super::ProviderParameter {
                 id: "oauth",
@@ -46,40 +51,38 @@ fn format_spec(name_id: &str, mod_id: u32, file_id: Option<u32>) -> ModSpecifica
     })
 }
 
-#[derive(Debug)]
-pub struct ModioProvider {
-    modio: modio::Modio,
+pub struct ModioProvider<M: DrgModio> {
+    modio: M,
 }
 
-impl ModioProvider {
+impl<M: DrgModio + 'static> ModioProvider<M> {
     fn new_provider(parameters: &HashMap<String, String>) -> Result<Arc<dyn ModProvider>> {
-        let client = reqwest_middleware::ClientBuilder::new(reqwest::Client::new())
-            .with::<LoggingMiddleware>(Default::default())
-            .build();
-        let modio = modio::Modio::new(
-            modio::Credentials::with_token(
-                "".to_owned(), // TODO patch modio to not use API key at all
-                parameters
-                    .get("oauth")
-                    .context("missing OAuth token param")?,
-            ),
-            client,
-        )?;
-
-        Ok(Arc::new(Self::new(modio)))
+        Ok(Arc::new(Self::new(M::with_parameters(parameters)?)))
     }
-    fn new(modio: modio::Modio) -> Self {
+    fn new(modio: M) -> Self {
         Self { modio }
     }
 }
 
-#[derive(Debug, Default, Serialize, Deserialize)]
-#[serde(default)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct ModioCache {
     mod_id_map: HashMap<String, u32>,
     modfile_blobs: HashMap<u32, BlobRef>,
     dependencies: HashMap<u32, Vec<u32>>,
     mods: HashMap<u32, ModioMod>,
+    last_update_time: Option<SystemTime>,
+}
+
+impl Default for ModioCache {
+    fn default() -> Self {
+        Self {
+            mod_id_map: Default::default(),
+            modfile_blobs: Default::default(),
+            dependencies: Default::default(),
+            mods: Default::default(),
+            last_update_time: Some(SystemTime::now()),
+        }
+    }
 }
 
 #[typetag::serde]
@@ -95,7 +98,7 @@ impl ModProviderCache for ModioCache {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ModioMod {
     name_id: String,
     name: String,
@@ -113,39 +116,20 @@ impl ModioMod {
             tags: mod_.tags.into_iter().map(|t| t.name).collect(),
         }
     }
-    async fn fetch(modio: &modio::Modio, id: u32) -> Result<Self> {
-        use modio::filter::NotEq;
-        use modio::mods::filters::Id;
-
-        let files = modio
-            .game(MODIO_DRG_ID)
-            .mod_(id)
-            .files()
-            .search(Id::ne(0))
-            .collect()
-            .await?;
-        let mod_ = modio.game(MODIO_DRG_ID).mod_(id).get().await?;
-
-        Ok(ModioMod::new(mod_, files))
-    }
-    async fn fetch_files(modio: &modio::Modio, mod_: modio::mods::Mod) -> Result<Self> {
-        use modio::filter::NotEq;
-        use modio::mods::filters::Id;
-
-        let files = modio
-            .game(MODIO_DRG_ID)
-            .mod_(mod_.id)
-            .files()
-            .search(Id::ne(0))
-            .collect()
-            .await?;
-        let mod_ = modio.game(MODIO_DRG_ID).mod_(mod_.id).get().await?;
-
-        Ok(ModioMod::new(mod_, files))
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ModioModResponse {
+    id: u32,
+}
+
+impl From<modio::mods::Mod> for ModioModResponse {
+    fn from(value: modio::mods::Mod) -> Self {
+        Self { id: value.id }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ModioFile {
     id: u32,
     date_added: u64,
@@ -164,8 +148,8 @@ impl ModioFile {
 }
 
 #[derive(Default)]
-struct LoggingMiddleware {
-    requests: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+pub(crate) struct LoggingMiddleware {
+    pub(crate) requests: std::sync::Arc<std::sync::atomic::AtomicUsize>,
 }
 
 #[async_trait::async_trait]
@@ -199,24 +183,210 @@ impl Middleware for LoggingMiddleware {
     }
 }
 
+#[cfg_attr(test, automock)]
 #[async_trait::async_trait]
-impl ModProvider for ModioProvider {
+pub trait DrgModio: Sync + Send {
+    fn with_parameters(parameters: &HashMap<String, String>) -> Result<Self>
+    where
+        Self: Sized;
+    async fn check(&self) -> Result<()>;
+    async fn fetch_mod(&self, id: u32) -> Result<ModioMod>;
+    async fn fetch_files(&self, mod_id: u32) -> Result<ModioMod>;
+    async fn fetch_file(&self, mod_id: u32, modfile_id: u32) -> Result<modio::files::File>;
+    async fn fetch_dependencies(&self, mod_id: u32) -> Result<Vec<u32>>;
+    async fn fetch_mods_by_name(&self, name_id: &str) -> Result<Vec<ModioModResponse>>;
+    async fn fetch_mods_by_ids(&self, filter_ids: Vec<u32>) -> Result<Vec<modio::mods::Mod>>;
+    async fn fetch_mod_updates_since(
+        &self,
+        mod_ids: Vec<u32>,
+        last_update: u64,
+    ) -> Result<HashSet<u32>>;
+    fn download<A: 'static>(&self, action: A) -> modio::download::Downloader
+    where
+        modio::download::DownloadAction: From<A>;
+}
+
+#[async_trait::async_trait]
+impl DrgModio for modio::Modio {
+    fn with_parameters(parameters: &HashMap<String, String>) -> Result<Self> {
+        let client = reqwest_middleware::ClientBuilder::new(reqwest::Client::new())
+            .with::<LoggingMiddleware>(Default::default())
+            .build();
+        let modio = modio::Modio::new(
+            modio::Credentials::with_token(
+                "".to_owned(), // TODO patch modio to not use API key at all
+                parameters
+                    .get("oauth")
+                    .context("missing OAuth token param")?,
+            ),
+            client,
+        )?;
+
+        Ok(modio)
+    }
+    async fn check(&self) -> Result<()> {
+        use modio::filter::Eq;
+        use modio::mods::filters::Id;
+
+        self.game(MODIO_DRG_ID)
+            .mods()
+            .search(Id::eq(0))
+            .collect()
+            .await?;
+        Ok(())
+    }
+    async fn fetch_mod(&self, id: u32) -> Result<ModioMod> {
+        use modio::filter::NotEq;
+        use modio::mods::filters::Id;
+
+        let files = self
+            .game(MODIO_DRG_ID)
+            .mod_(id)
+            .files()
+            .search(Id::ne(0))
+            .collect()
+            .await?;
+        let mod_ = self.game(MODIO_DRG_ID).mod_(id).get().await?;
+
+        Ok(ModioMod::new(mod_, files))
+    }
+    async fn fetch_files(&self, mod_id: u32) -> Result<ModioMod> {
+        use modio::filter::NotEq;
+        use modio::mods::filters::Id;
+
+        let files = self
+            .game(MODIO_DRG_ID)
+            .mod_(mod_id)
+            .files()
+            .search(Id::ne(0))
+            .collect()
+            .await?;
+        let mod_ = self.game(MODIO_DRG_ID).mod_(mod_id).get().await?;
+
+        Ok(ModioMod::new(mod_, files))
+    }
+    async fn fetch_file(&self, mod_id: u32, modfile_id: u32) -> Result<modio::files::File> {
+        Ok(self
+            .game(MODIO_DRG_ID)
+            .mod_(mod_id)
+            .file(modfile_id)
+            .get()
+            .await?)
+    }
+    async fn fetch_dependencies(&self, mod_id: u32) -> Result<Vec<u32>> {
+        Ok(self
+            .game(MODIO_DRG_ID)
+            .mod_(mod_id)
+            .dependencies()
+            .list()
+            .await?
+            .into_iter()
+            .map(|d| d.mod_id)
+            .collect::<Vec<_>>())
+    }
+    async fn fetch_mods_by_name(&self, name_id: &str) -> Result<Vec<ModioModResponse>> {
+        use modio::filter::{Eq, In};
+        use modio::mods::filters::{NameId, Visible};
+
+        let filter = NameId::eq(name_id).and(Visible::_in(vec![0, 1]));
+        Ok(self
+            .game(MODIO_DRG_ID)
+            .mods()
+            .search(filter)
+            .collect()
+            .await?
+            .into_iter()
+            .map(|m| m.into())
+            .collect())
+    }
+    async fn fetch_mods_by_ids(&self, filter_ids: Vec<u32>) -> Result<Vec<modio::mods::Mod>> {
+        use modio::filter::In;
+        use modio::mods::filters::Id;
+
+        let filter = Id::_in(filter_ids);
+
+        Ok(self
+            .game(MODIO_DRG_ID)
+            .mods()
+            .search(filter)
+            .collect()
+            .await?)
+    }
+    async fn fetch_mod_updates_since(
+        &self,
+        mod_ids: Vec<u32>,
+        last_update: u64,
+    ) -> Result<HashSet<u32>> {
+        use modio::filter::Cmp;
+        use modio::filter::In;
+        use modio::filter::NotIn;
+
+        use modio::mods::filters::events::EventType;
+        use modio::mods::filters::events::ModId;
+        use modio::mods::filters::DateAdded;
+        use modio::mods::EventType as EventTypes;
+
+        let events = self
+            .game(MODIO_DRG_ID)
+            .mods()
+            .events(
+                EventType::not_in(vec![
+                    EventTypes::ModCommentAdded,
+                    EventTypes::ModCommentDeleted,
+                ])
+                .and(ModId::_in(mod_ids))
+                .and(DateAdded::gt(last_update)),
+            )
+            .collect()
+            .await?;
+        Ok(events.iter().map(|e| e.mod_id).collect::<HashSet<_>>())
+    }
+    fn download<A>(&self, action: A) -> modio::download::Downloader
+    where
+        modio::download::DownloadAction: From<A>,
+    {
+        self.download(action)
+    }
+}
+
+#[async_trait::async_trait]
+impl<M: DrgModio + Send + Sync> ModProvider for ModioProvider<M> {
     async fn resolve_mod(
         &self,
         spec: &ModSpecification,
         update: bool,
         cache: ProviderCache,
-        _blob_cache: &BlobCache,
     ) -> Result<ModResponse> {
-        use modio::filter::{Eq, In};
-        use modio::mods::filters::{Id, NameId, Visible};
-
         if spec.url.contains("?preview=") {
             bail!("Preview mod links cannot be added directly, please subscribe to the mod on mod.io and and then use the non-preview link.");
         };
 
+        fn read_cache<F, R>(cache: &ProviderCache, update: bool, f: F) -> Option<R>
+        where
+            F: Fn(&ModioCache) -> Option<R>,
+        {
+            (!update)
+                .then(|| {
+                    cache
+                        .read()
+                        .unwrap()
+                        .get::<ModioCache>(MODIO_PROVIDER_ID)
+                        .and_then(f)
+                })
+                .flatten()
+        }
+        fn write_cache<F>(cache: &ProviderCache, f: F)
+        where
+            F: FnOnce(&mut ModioCache),
+        {
+            f(cache
+                .write()
+                .unwrap()
+                .get_mut::<ModioCache>(MODIO_PROVIDER_ID))
+        }
+
         let url = &spec.url;
-        let captures = RE_MOD.captures(url).context("invalid modio URL {url}")?;
+        let captures = re_mod().captures(url).context("invalid modio URL {url}")?;
 
         if let (Some(mod_id), Some(_modfile_id)) =
             (captures.name("mod_id"), captures.name("modfile_id"))
@@ -224,89 +394,51 @@ impl ModProvider for ModioProvider {
             // both mod ID and modfile ID specified, but not necessarily name
             let mod_id = mod_id.as_str().parse::<u32>().unwrap();
 
-            let mod_ = if let Some(mod_) = (!update)
-                .then(|| {
-                    cache
-                        .read()
-                        .unwrap()
-                        .get::<ModioCache>(MODIO_PROVIDER_ID)
-                        .and_then(|c| c.mods.get(&mod_id).cloned())
-                })
-                .flatten()
-            {
-                mod_
-            } else {
-                let mod_ = ModioMod::fetch(&self.modio, mod_id).await?;
+            let mod_ =
+                if let Some(mod_) = read_cache(&cache, update, |c| c.mods.get(&mod_id).cloned()) {
+                    mod_
+                } else {
+                    let mod_ = self.modio.fetch_mod(mod_id).await?;
 
-                let mut lock = cache.write().unwrap();
-                let c = lock.get_mut::<ModioCache>(MODIO_PROVIDER_ID);
-                c.mods.insert(mod_id, mod_.clone());
-                c.mod_id_map.insert(mod_.name_id.to_owned(), mod_id);
+                    write_cache(&cache, |c| {
+                        c.mods.insert(mod_id, mod_.clone());
+                        c.mod_id_map.insert(mod_.name_id.to_owned(), mod_id);
+                    });
 
-                mod_
-            };
+                    mod_
+                };
 
-            let dep_ids = match (!update)
-                .then(|| {
-                    cache
-                        .read()
-                        .unwrap()
-                        .get::<ModioCache>(MODIO_PROVIDER_ID)
-                        .and_then(|c| c.dependencies.get(&mod_id).cloned())
-                })
-                .flatten()
+            let dep_ids = match read_cache(&cache, update, |c| c.dependencies.get(&mod_id).cloned())
             {
                 Some(deps) => deps,
                 None => {
-                    let deps = self
-                        .modio
-                        .game(MODIO_DRG_ID)
-                        .mod_(mod_id)
-                        .dependencies()
-                        .list()
-                        .await?
-                        .into_iter()
-                        .map(|d| d.mod_id)
-                        .collect::<Vec<_>>();
-
-                    cache
-                        .write()
-                        .unwrap()
-                        .get_mut::<ModioCache>(MODIO_PROVIDER_ID)
-                        .dependencies
-                        .insert(mod_id, deps.clone());
+                    let deps = self.modio.fetch_dependencies(mod_id).await?;
+                    write_cache(&cache, |c| {
+                        c.dependencies.insert(mod_id, deps.clone());
+                    });
                     deps
                 }
             };
 
             let deps = {
                 // build map of (id -> name) for deps
-                let mut name_map = cache
-                    .read()
-                    .unwrap()
-                    .get::<ModioCache>(MODIO_PROVIDER_ID)
-                    .map(|c| {
+                let mut name_map = read_cache(&cache, false, |c| {
+                    Some(
                         dep_ids
                             .iter()
                             .flat_map(|id| c.mods.get(id).map(|m| (*id, m.name_id.to_string())))
-                            .collect::<HashMap<_, _>>()
-                    })
-                    .unwrap_or_default();
+                            .collect::<HashMap<_, _>>(),
+                    )
+                })
+                .unwrap_or_default();
 
                 let filter_ids = dep_ids
                     .iter()
                     .filter(|id| !name_map.contains_key(id))
+                    .cloned()
                     .collect::<Vec<_>>();
                 if !filter_ids.is_empty() {
-                    let filter = Id::_in(filter_ids);
-
-                    let mods = self
-                        .modio
-                        .game(MODIO_DRG_ID)
-                        .mods()
-                        .search(filter)
-                        .collect()
-                        .await?;
+                    let mods = self.modio.fetch_mods_by_ids(filter_ids).await?;
 
                     for m in &mods {
                         name_map.insert(m.id, m.name_id.to_string());
@@ -314,20 +446,20 @@ impl ModProvider for ModioProvider {
 
                     for m in mods {
                         let id = m.id;
-                        let m = ModioMod::fetch_files(&self.modio, m).await?;
-                        let mut lock = cache.write().unwrap();
-                        let c = lock.get_mut::<ModioCache>(MODIO_PROVIDER_ID);
-                        c.mod_id_map.insert(m.name_id.to_owned(), id);
-                        c.mods.insert(id, m);
+                        // TODO avoid fetching mod a second time
+                        let m = self.modio.fetch_files(id).await?;
+                        write_cache(&cache, |c| {
+                            c.mod_id_map.insert(m.name_id.to_owned(), id);
+                            c.mods.insert(id, m);
+                        });
                     }
                 }
 
                 let deps = dep_ids
                     .iter()
-                    .filter_map(|id| {
-                        if let Some(name) = name_map.get(id) {
-                            Some(format_spec(name, *id, None))
-                        } else {
+                    .filter_map(|id| match name_map.get(id) {
+                        Some(name) => Some(format_spec(name, *id, None)),
+                        None => {
                             warn!("dependency ID missing from name_map: {id}");
                             None
                         }
@@ -356,27 +488,16 @@ impl ModProvider for ModioProvider {
             // only mod ID specified, use latest version (either cached local or remote depending)
             let mod_id = mod_id.as_str().parse::<u32>().unwrap();
 
-            let cached = (!update)
-                .then(|| {
-                    cache
-                        .read()
-                        .unwrap()
-                        .get::<ModioCache>(MODIO_PROVIDER_ID)
-                        .and_then(|c| c.mods.get(&mod_id).cloned())
-                })
-                .flatten();
-
-            let mod_ = if let Some(mod_) = cached {
-                mod_
-            } else {
-                let mod_ = ModioMod::fetch(&self.modio, mod_id).await?;
-
-                let mut lock = cache.write().unwrap();
-                let c = lock.get_mut::<ModioCache>(MODIO_PROVIDER_ID);
-                c.mods.insert(mod_id, mod_.clone());
-                c.mod_id_map.insert(mod_.name_id.to_owned(), mod_id);
-
-                mod_
+            let mod_ = match read_cache(&cache, update, |c| c.mods.get(&mod_id).cloned()) {
+                Some(mod_) => mod_,
+                None => {
+                    let mod_ = self.modio.fetch_mod(mod_id).await?;
+                    write_cache(&cache, |c| {
+                        c.mods.insert(mod_id, mod_.clone());
+                        c.mod_id_map.insert(mod_.name_id.to_owned(), mod_id);
+                    });
+                    mod_
+                }
             };
 
             Ok(ModResponse::Redirect(format_spec(
@@ -391,80 +512,56 @@ impl ModProvider for ModioProvider {
         } else {
             let name_id = captures.name("name_id").unwrap().as_str();
 
-            let cached_id = if update {
-                None
-            } else {
-                cache
-                    .read()
-                    .unwrap()
-                    .get::<ModioCache>(MODIO_PROVIDER_ID)
-                    .and_then(|c| c.mod_id_map.get(name_id).cloned())
-            };
+            let cached_id = read_cache(&cache, update, |c| c.mod_id_map.get(name_id).cloned());
 
             if let Some(id) = cached_id {
-                let cached = (!update)
-                    .then(|| {
-                        cache
-                            .read()
-                            .unwrap()
-                            .get::<ModioCache>(MODIO_PROVIDER_ID)
-                            .and_then(|c| c.mods.get(&id))
-                            .and_then(|m| m.latest_modfile)
-                    })
-                    .flatten();
+                let cached = read_cache(&cache, update, |c| {
+                    c.mods.get(&id).and_then(|m| m.latest_modfile)
+                });
 
-                let modfile_id = if let Some(modfile_id) = cached {
-                    modfile_id
-                } else {
-                    let mod_ = ModioMod::fetch(&self.modio, id).await?;
-
-                    let mut lock = cache.write().unwrap();
-                    let c = lock.get_mut::<ModioCache>(MODIO_PROVIDER_ID);
-                    c.mods.insert(id, mod_.clone());
-                    c.mod_id_map.insert(mod_.name_id, id);
-
-                    mod_.latest_modfile.with_context(|| {
-                        format!("mod {} does not have an associated modfile", url)
-                    })?
+                let modfile_id = match cached {
+                    Some(modfile_id) => modfile_id,
+                    None => {
+                        let mod_ = self.modio.fetch_mod(id).await?;
+                        let modfile_id = mod_.latest_modfile;
+                        write_cache(&cache, |c| {
+                            c.mods.insert(id, mod_.clone());
+                            c.mod_id_map.insert(mod_.name_id, id);
+                        });
+                        modfile_id.with_context(|| {
+                            format!("mod {} does not have an associated modfile", url)
+                        })?
+                    }
                 };
 
-                Ok(ModResponse::Redirect(ModSpecification::new(format!(
-                    "https://mod.io/g/drg/m/{}#{}/{}",
-                    &name_id, id, modfile_id
-                ))))
+                Ok(ModResponse::Redirect(format_spec(
+                    name_id,
+                    id,
+                    Some(modfile_id),
+                )))
             } else {
-                let filter = NameId::eq(name_id).and(Visible::_in(vec![0, 1]));
-                let mut mods = self
-                    .modio
-                    .game(MODIO_DRG_ID)
-                    .mods()
-                    .search(filter)
-                    .collect()
-                    .await?;
+                let mut mods = self.modio.fetch_mods_by_name(name_id).await?;
                 if mods.len() > 1 {
-                    Err(anyhow!(
-                        "multiple mods returned for mod name_id {}",
-                        name_id,
-                    ))
+                    bail!("multiple mods returned for mod name_id {}", name_id)
                 } else if let Some(mod_) = mods.pop() {
                     let mod_id = mod_.id;
-                    let mod_ = ModioMod::fetch(&self.modio, mod_id).await?;
-
-                    let mut lock = cache.write().unwrap();
-                    let c = lock.get_mut::<ModioCache>(MODIO_PROVIDER_ID);
-                    c.mods.insert(mod_id, mod_.clone());
-                    c.mod_id_map.insert(mod_.name_id, mod_id);
-
-                    let file = mod_.latest_modfile.with_context(|| {
+                    let mod_ = self.modio.fetch_mod(mod_id).await?;
+                    let modfile_id = mod_.latest_modfile;
+                    write_cache(&cache, |c| {
+                        c.mods.insert(mod_id, mod_.clone());
+                        c.mod_id_map.insert(mod_.name_id, mod_id);
+                    });
+                    let file = modfile_id.with_context(|| {
                         format!("mod {} does not have an associated modfile", url)
                     })?;
 
-                    Ok(ModResponse::Redirect(ModSpecification::new(format!(
-                        "https://mod.io/g/drg/m/{}#{}/{}",
-                        &name_id, mod_id, file
-                    ))))
+                    Ok(ModResponse::Redirect(format_spec(
+                        name_id,
+                        mod_id,
+                        Some(file),
+                    )))
                 } else {
-                    Err(anyhow!("no mods returned for mod name_id {}", &name_id))
+                    bail!("no mods returned for mod name_id {}", &name_id)
                 }
             }
         }
@@ -478,7 +575,7 @@ impl ModProvider for ModioProvider {
         tx: Option<Sender<FetchProgress>>,
     ) -> Result<PathBuf> {
         let url = &res.url;
-        let captures = RE_MOD
+        let captures = re_mod()
             .captures(&res.url)
             .with_context(|| format!("invalid modio URL {url}"))?;
 
@@ -509,13 +606,7 @@ impl ModProvider for ModioProvider {
                     }
                     path
                 } else {
-                    let file = self
-                        .modio
-                        .game(MODIO_DRG_ID)
-                        .mod_(mod_id)
-                        .file(modfile_id)
-                        .get()
-                        .await?;
+                    let file = self.modio.fetch_file(mod_id, modfile_id).await?;
 
                     let size = file.filesize;
                     let download: modio::download::DownloadAction = file.into();
@@ -562,26 +653,108 @@ impl ModProvider for ModioProvider {
                 },
             )
         } else {
-            Err(anyhow!("download URL must be fully specified"))
+            bail!("download URL must be fully specified")
         }
     }
 
-    async fn check(&self) -> Result<()> {
-        use modio::filter::Eq;
-        use modio::mods::filters::Id;
+    async fn update_cache(&self, cache: ProviderCache) -> Result<()> {
+        use futures::stream::{self, StreamExt, TryStreamExt};
 
-        self.modio
-            .game(MODIO_DRG_ID)
-            .mods()
-            .search(Id::eq(0))
-            .collect()
+        let now = SystemTime::now();
+
+        let (last_update, name_map) = {
+            let cache = cache.read().unwrap();
+            let Some(prov) = cache.get::<ModioCache>(MODIO_PROVIDER_ID) else {
+                return Ok(()); // no existing mods, nothing to update
+            };
+            (
+                prov.last_update_time,
+                prov.mods
+                    .iter()
+                    .map(|(id, mod_)| (*id, mod_.name_id.clone()))
+                    .collect::<HashMap<_, _>>(),
+            )
+        };
+
+        let last_update = last_update
+            .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
+            .unwrap_or_default();
+
+        let mod_ids = self
+            .modio
+            .fetch_mod_updates_since(
+                name_map.keys().cloned().collect::<Vec<u32>>(),
+                last_update.as_secs(),
+            )
             .await?;
+
+        // TODO most of this is ripped from generic provider code. the resolution process is overly
+        // complex and should be redone now that there's a much better understanding of what
+        // exactly is required
+        let mut to_resolve = mod_ids
+            .iter()
+            .filter_map(|id| name_map.get(id).map(|name| format_spec(name, *id, None)))
+            .collect::<HashSet<_>>();
+
+        let mut mods_map = HashMap::new();
+
+        // used to deduplicate dependencies from mods already present in the mod list
+        let mut precise_mod_specs = HashSet::new();
+
+        pub async fn resolve_mod<M: DrgModio>(
+            prov: &ModioProvider<M>,
+            cache: ProviderCache,
+            original_spec: ModSpecification,
+        ) -> Result<(ModSpecification, ModInfo)> {
+            let mut spec = original_spec.clone();
+            loop {
+                match prov.resolve_mod(&spec, true, cache.clone()).await? {
+                    ModResponse::Resolve(m) => {
+                        return Ok((original_spec, m));
+                    }
+                    ModResponse::Redirect(redirected_spec) => spec = redirected_spec,
+                };
+            }
+        }
+
+        while !to_resolve.is_empty() {
+            for (u, m) in stream::iter(
+                to_resolve
+                    .iter()
+                    .map(|u| resolve_mod(self, cache.clone(), u.to_owned())),
+            )
+            .boxed()
+            .buffer_unordered(5)
+            .try_collect::<Vec<_>>()
+            .await?
+            {
+                precise_mod_specs.insert(m.spec.clone());
+                mods_map.insert(u, m);
+                to_resolve.clear();
+                for m in mods_map.values() {
+                    for d in &m.suggested_dependencies {
+                        if !precise_mod_specs.contains(d) {
+                            to_resolve.insert(d.clone());
+                        }
+                    }
+                }
+            }
+        }
+
+        let mut lock = cache.write().unwrap();
+        let c = lock.get_mut::<ModioCache>(MODIO_PROVIDER_ID);
+        c.last_update_time = Some(now);
+
         Ok(())
+    }
+
+    async fn check(&self) -> Result<()> {
+        self.modio.check().await
     }
 
     fn get_mod_info(&self, spec: &ModSpecification, cache: ProviderCache) -> Option<ModInfo> {
         let url = &spec.url;
-        let captures = RE_MOD.captures(url)?;
+        let captures = re_mod().captures(url)?;
 
         let cache = cache.read().unwrap();
         let prov = cache.get::<ModioCache>(MODIO_PROVIDER_ID)?;
@@ -626,13 +799,13 @@ impl ModProvider for ModioProvider {
 
     fn is_pinned(&self, spec: &ModSpecification, _cache: ProviderCache) -> bool {
         let url = &spec.url;
-        let captures = RE_MOD.captures(url).unwrap();
+        let captures = re_mod().captures(url).unwrap();
 
         captures.name("modfile_id").is_some()
     }
     fn get_version_name(&self, spec: &ModSpecification, cache: ProviderCache) -> Option<String> {
         let url = &spec.url;
-        let captures = RE_MOD.captures(url).unwrap();
+        let captures = re_mod().captures(url).unwrap();
 
         let cache = cache.read().unwrap();
         let prov = cache.get::<ModioCache>(MODIO_PROVIDER_ID);
@@ -704,5 +877,127 @@ fn process_modio_tags(set: &HashSet<String>) -> ModioTags {
         versions,
         required_status,
         approval_status,
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use std::sync::{OnceLock, RwLock};
+
+    use crate::{providers::VersionAnnotatedCache, state::config::ConfigWrapper};
+
+    use super::*;
+
+    #[tokio::test]
+    async fn test_check_pass() {
+        let mut mock = MockDrgModio::new();
+        mock.expect_check().times(1).returning(|| Ok(()));
+        let modio_provider = ModioProvider::new(mock);
+        assert!(modio_provider.check().await.is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_check_fail() {
+        let mut mock = MockDrgModio::new();
+        mock.expect_check().times(1).returning(|| bail!("fail"));
+        let modio_provider = ModioProvider::new(mock);
+        assert!(modio_provider.check().await.is_err());
+    }
+
+    struct FullMod {
+        mod_: ModioMod,
+        dependencies: Vec<u32>,
+    }
+
+    static MODS: OnceLock<HashMap<u32, FullMod>> = OnceLock::new();
+
+    #[tokio::test]
+    async fn test_fetch_mod_simple() {
+        let mods = MODS.get_or_init(|| {
+            [(
+                3,
+                FullMod {
+                    mod_: ModioMod {
+                        name_id: "test-mod".to_string(),
+                        name: "Test Mod".to_string(),
+                        latest_modfile: Some(5),
+                        modfiles: vec![ModioFile {
+                            id: 5,
+                            date_added: 12345,
+                            version: None,
+                            changelog: None,
+                        }],
+                        tags: HashSet::new(),
+                    },
+                    dependencies: vec![],
+                },
+            )]
+            .into_iter()
+            .collect::<HashMap<_, _>>()
+        });
+        let mod_names = mods
+            .iter()
+            .map(|(id, m)| (m.mod_.name_id.as_str(), id))
+            .collect::<HashMap<_, _>>();
+        let mut mock = MockDrgModio::new();
+
+        mock.expect_fetch_mods_by_name()
+            .times(1)
+            .returning(move |name| {
+                mod_names
+                    .get(name)
+                    .map(|id| vec![ModioModResponse { id: **id }])
+                    .context("not found")
+            });
+        mock.expect_fetch_mod()
+            .times(1)
+            .returning(move |id| mods.get(&id).map(|m| m.mod_.clone()).context("not found"));
+        mock.expect_fetch_dependencies()
+            .times(1)
+            .returning(move |id| {
+                mods.get(&id)
+                    .map(|m| m.dependencies.clone())
+                    .context("not found")
+            });
+
+        let cache = Arc::new(RwLock::new(ConfigWrapper::<VersionAnnotatedCache>::memory(
+            VersionAnnotatedCache::default(),
+        )));
+
+        let modio_provider = ModioProvider::new(mock);
+        let resolved_mod = modio_provider
+            .resolve_mod(
+                &ModSpecification::new("https://mod.io/g/drg/m/test-mod".to_string()),
+                false,
+                cache.clone(),
+            )
+            .await
+            .unwrap();
+
+        let resolved_mod = match resolved_mod {
+            ModResponse::Redirect(spec) => spec,
+            _ => unreachable!(),
+        };
+        let _resolved_mod = modio_provider
+            .resolve_mod(&resolved_mod, false, cache.clone())
+            .await
+            .unwrap();
+        let lock = cache.read().unwrap();
+        let modio_cache = lock.get::<ModioCache>(MODIO_PROVIDER_ID).unwrap();
+
+        assert_eq!(
+            modio_cache.mod_id_map,
+            [("test-mod".to_string(), 3)].into_iter().collect()
+        );
+        assert_eq!(
+            modio_cache.dependencies,
+            [(3, vec![])].into_iter().collect()
+        );
+        assert_eq!(
+            modio_cache.mods,
+            [(3, mods.get(&3).map(|m| m.mod_.clone()).unwrap())]
+                .into_iter()
+                .collect()
+        );
     }
 }

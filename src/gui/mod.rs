@@ -6,8 +6,9 @@ mod toggle_switch;
 
 //#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // hide console window on Windows in release
 
+use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet};
-use std::time::{Duration, SystemTime};
+use std::time::{SystemTime};
 use std::{
     collections::{HashMap, HashSet},
     ops::DerefMut,
@@ -15,7 +16,7 @@ use std::{
 };
 
 use anyhow::{anyhow, Context, Result};
-use eframe::egui::{CollapsingHeader, RichText};
+use eframe::egui::{Button, CollapsingHeader, Label, RichText, Visuals};
 use eframe::epaint::{Pos2, Vec2};
 use eframe::{
     egui::{self, FontSelection, Layout, TextFormat, Ui},
@@ -23,13 +24,17 @@ use eframe::{
     epaint::{text::LayoutJob, Color32, Stroke},
 };
 use egui_commonmark::{CommonMarkCache, CommonMarkViewer};
+use itertools::Itertools as _;
+use strum::{EnumIter, IntoEnumIterator};
 use tokio::{
     sync::mpsc::{self, Receiver, Sender},
     task::JoinHandle,
 };
-use tracing::{debug, info, trace};
+use tracing::{debug, trace};
 
 use crate::mod_lints::{LintId, LintReport, SplitAssetPair};
+use crate::state::SortingConfig;
+use crate::Dirs;
 use crate::{
     integrate::uninstall,
     is_drg_pak,
@@ -43,26 +48,87 @@ use find_string::FindString;
 use message::MessageHandle;
 use request_counter::{RequestCounter, RequestID};
 
+use self::message::ModDetails;
 use self::toggle_switch::toggle_switch;
 
-pub fn gui(args: Option<Vec<String>>) -> Result<()> {
+pub fn gui(dirs: Dirs, args: Option<Vec<String>>) -> Result<()> {
     let options = eframe::NativeOptions {
-        initial_window_size: Some(egui::vec2(800.0, 400.0)),
-        drag_and_drop_support: true,
+        centered: true,
+        viewport: egui::ViewportBuilder::default()
+            .with_inner_size([900.0, 600.0])
+            .with_drag_and_drop(true)
+            .with_icon(std::sync::Arc::new(egui::IconData {
+                rgba: image::load_from_memory(include_bytes!("../../assets/icon-gui.ico"))
+                    .unwrap()
+                    .to_rgba8()
+                    .to_vec(),
+                width: 32,
+                height: 32,
+            })),
         ..Default::default()
     };
     eframe::run_native(
-        &format!("DRG Mod Integration {}", env!("CARGO_PKG_VERSION")),
+        &format!("mint-notag {}", env!("CARGO_PKG_VERSION")),
         options,
-        Box::new(|_cc| Box::new(App::new(args).unwrap())),
+        Box::new(|cc| Box::new(App::new(cc, dirs, args).unwrap())),
     )
     .map_err(|e| anyhow!("{e}"))?;
     Ok(())
 }
 
+pub mod colors {
+    use eframe::epaint::Color32;
+
+    pub const DARK_RED: Color32 = Color32::DARK_RED;
+    pub const DARKER_RED: Color32 = Color32::from_rgb(110, 0, 0);
+
+    pub const DARK_GREEN: Color32 = Color32::DARK_GREEN;
+    pub const DARKER_GREEN: Color32 = Color32::from_rgb(0, 80, 0);
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum GuiTheme {
+    Light,
+    Dark,
+}
+
+impl GuiTheme {
+    fn visuals(self) -> Visuals {
+        match self {
+            GuiTheme::Light => Visuals::light(),
+            GuiTheme::Dark => Visuals::dark(),
+        }
+    }
+}
+
+#[derive(PartialEq, Debug, EnumIter, Clone, Copy, serde::Serialize, serde::Deserialize)]
+pub enum SortBy {
+    Enabled,
+    Name,
+    Provider,
+    RequiredStatus,
+    ApprovalCategory,
+}
+
+impl SortBy {
+    fn as_str(&self) -> &'static str {
+        match self {
+            SortBy::Enabled => "Enabled",
+            SortBy::Name => "Name",
+            SortBy::Provider => "Provider",
+            SortBy::RequiredStatus => "RequiredByAll",
+            SortBy::ApprovalCategory => "Approval",
+        }
+    }
+}
+
+const FOLDER_LOGO_PNG: &[u8] = include_bytes!("../../assets/folder.png");
+const HTTP_LOGO_PNG: &[u8] = include_bytes!("../../assets/globe.png");
 const MODIO_LOGO_PNG: &[u8] = include_bytes!("../../assets/modio-cog-blue.png");
+const HEADER_PNG: &[u8] = include_bytes!("../../assets/header.png");
 
 pub struct App {
+    default_visuals: Visuals,
     args: Option<Vec<String>>,
     tx: Sender<message::Message>,
     rx: Receiver<message::Message>,
@@ -72,13 +138,18 @@ pub struct App {
     integrate_rid: Option<MessageHandle<HashMap<ModSpecification, SpecFetchProgress>>>,
     update_rid: Option<MessageHandle<()>>,
     check_updates_rid: Option<MessageHandle<()>>,
-    checked_updates_initially: bool,
+    has_run_init: bool,
     request_counter: RequestCounter,
     window_provider_parameters: Option<WindowProviderParameters>,
-    search_string: Option<String>,
+    search_string: String,
     scroll_to_match: bool,
+    focus_search: bool,
     settings_window: Option<WindowSettings>,
+    about_window: Option<WindowAbout>,
+    folder_texture_handle: Option<egui::TextureHandle>,
+    http_texture_handle: Option<egui::TextureHandle>,
     modio_texture_handle: Option<egui::TextureHandle>,
+    header_texture_handle: Option<egui::TextureHandle>,
     last_action_status: LastActionStatus,
     available_update: Option<GitHubRelease>,
     show_update_time: Option<SystemTime>,
@@ -88,7 +159,15 @@ pub struct App {
     lint_report: Option<LintReport>,
     lints_toggle_window: Option<WindowLintsToggle>,
     lint_options: LintOptions,
-    cache: CommonMarkCache,
+    update_cmark_cache: CommonMarkCache,
+    needs_restart: bool,
+    self_update_rid: Option<MessageHandle<SelfUpdateProgress>>,
+    original_exe_path: Option<PathBuf>,
+    pending_delete: Option<usize>,
+    detailed_mod_info_windows: HashMap<u32, WindowDetailedModInfo>,
+    mod_details: HashMap<u32, ModDetails>,
+    fetch_mod_details_rid: HashMap<u32, MessageHandle<()>>,
+    mod_details_thumbnail_texture_handle: HashMap<u32, egui::TextureHandle>,
 }
 
 #[derive(Default)]
@@ -112,13 +191,18 @@ enum LastActionStatus {
 }
 
 impl App {
-    fn new(args: Option<Vec<String>>) -> Result<Self> {
+    fn new(cc: &eframe::CreationContext, dirs: Dirs, args: Option<Vec<String>>) -> Result<Self> {
+        Self::set_custom_fonts(&cc.egui_ctx);
+
         let (tx, rx) = mpsc::channel(10);
-        let state = State::init()?;
-        info!("config dir = {}", state.project_dirs.config_dir().display());
-        info!("cache dir = {}", state.project_dirs.cache_dir().display());
+        let state = State::init(dirs)?;
 
         Ok(Self {
+            default_visuals: cc
+                .integration_info
+                .system_theme
+                .map(|t| t.egui_visuals())
+                .unwrap_or_default(),
             args,
             tx,
             rx,
@@ -129,12 +213,17 @@ impl App {
             integrate_rid: None,
             update_rid: None,
             check_updates_rid: None,
-            checked_updates_initially: false,
+            has_run_init: false,
             window_provider_parameters: None,
             search_string: Default::default(),
             scroll_to_match: false,
+            focus_search: false,
             settings_window: None,
+            about_window: None,
+            folder_texture_handle: None,
+            http_texture_handle: None,
             modio_texture_handle: None,
+            header_texture_handle: None,
             last_action_status: LastActionStatus::Idle,
             available_update: None,
             show_update_time: None,
@@ -144,11 +233,46 @@ impl App {
             lint_report: None,
             lints_toggle_window: None,
             lint_options: LintOptions::default(),
-            cache: Default::default(),
+            update_cmark_cache: Default::default(),
+            needs_restart: false,
+            self_update_rid: None,
+            original_exe_path: None,
+            pending_delete: None,
+            detailed_mod_info_windows: HashMap::default(),
+            mod_details: HashMap::default(),
+            fetch_mod_details_rid: HashMap::default(),
+            mod_details_thumbnail_texture_handle: HashMap::default(),
         })
     }
 
+    fn set_custom_fonts(ctx: &egui::Context) {
+        let mut fonts = egui::FontDefinitions::default();
+
+        fonts.font_data.insert(
+            "my_font".to_owned(),
+            egui::FontData::from_static(include_bytes!(
+                "../../assets/NotoSansSC-Light.ttf"
+            )),
+        );
+
+        fonts
+            .families
+            .entry(egui::FontFamily::Proportional)
+            .or_default()
+            .insert(0, "my_font".to_owned());
+
+        fonts
+            .families
+            .entry(egui::FontFamily::Monospace)
+            .or_default()
+            .insert(0, "my_font".to_owned());
+
+        ctx.set_fonts(fonts);
+    }
+
     fn ui_profile(&mut self, ui: &mut Ui, profile: &str) {
+        let sorting_config = self.get_sorting_config();
+
         let ModData {
             profiles, groups, ..
         } = self.state.mod_data.deref_mut().deref_mut();
@@ -166,7 +290,7 @@ impl App {
             add_deps: None,
         };
 
-        let mut ui_profile = |ui: &mut Ui, profile: &mut ModProfile| {
+        let ui_profile = |ui: &mut Ui, profile: &mut ModProfile| {
             let enabled_specs = profile
                 .mods
                 .iter()
@@ -218,9 +342,9 @@ impl App {
                             };
                             let mut job = LayoutJob::default();
                             let mut is_match = false;
-                            if let Some(search_string) = &self.search_string {
+                            if !self.search_string.is_empty() {
                                 for (m, chunk) in
-                                    find_string::FindString::new(tag_str, search_string)
+                                    find_string::FindString::new(tag_str, &self.search_string)
                                 {
                                     let background = if m {
                                         is_match = true;
@@ -273,44 +397,40 @@ impl App {
                     match approval_status {
                         ApprovalStatus::Verified => {
                             mk_searchable_modio_tag(
-                                "Verified",
+                                "V",
                                 ui,
                                 Some(egui::Color32::LIGHT_GREEN),
-                                Some("Does not contain any gameplay affecting features or changes"),
+                                Some("Does not change gameplay elements."),
                             );
                         }
                         ApprovalStatus::Approved => {
                             mk_searchable_modio_tag(
-                                "Approved",
+                                "A",
                                 ui,
                                 Some(egui::Color32::LIGHT_BLUE),
-                                Some("Contains gameplay affecting features or changes"),
+                                Some("Changes gameplay elements."),
                             );
                         }
                         ApprovalStatus::Sandbox => {
-                            mk_searchable_modio_tag("Sandbox", ui, Some(egui::Color32::LIGHT_YELLOW), Some("Contains significant, possibly progression breaking, changes to gameplay"));
+                            mk_searchable_modio_tag(
+                                "S",
+                                ui,
+                                Some(egui::Color32::LIGHT_YELLOW),
+                                Some("Dramatically changes gameplay elements, awaiting approval or manually added.")
+                            );
                         }
                     }
 
                     match required_status {
                         RequiredStatus::RequiredByAll => {
                             mk_searchable_modio_tag(
-                                "RequiredByAll",
+                                "R",
                                 ui,
                                 Some(egui::Color32::LIGHT_RED),
-                                Some(
-                                    "All lobby members must use this mod for it to work correctly!",
-                                ),
+                                Some("All lobby members must use this mod for it to work correctly.",),
                             );
                         }
-                        RequiredStatus::Optional => {
-                            mk_searchable_modio_tag(
-                                "Optional",
-                                ui,
-                                None,
-                                Some("Clients are not required to install this mod to function"),
-                            );
-                        }
+                        RequiredStatus::Optional => {}
                     }
 
                     if *qol {
@@ -334,7 +454,7 @@ impl App {
             let mut ui_mod = |ctx: &mut Ctx,
                               ui: &mut Ui,
                               _group: Option<&str>,
-                              state: egui_dnd::ItemState,
+                              row_index: usize,
                               mc: &mut ModConfig| {
                 if !mc.enabled {
                     let vis = ui.visuals_mut();
@@ -344,7 +464,7 @@ impl App {
 
                 if ui
                     .add(toggle_switch(&mut mc.enabled))
-                    .on_hover_text_at_pointer("enabled?")
+                    .on_hover_text_at_pointer("Enabled?")
                     .changed()
                 {
                     ctx.needs_save = true;
@@ -382,7 +502,7 @@ impl App {
                 }
 
                 if let Some(info) = &info {
-                    egui::ComboBox::from_id_source(state.index)
+                    egui::ComboBox::from_id_source(row_index)
                         .selected_text(
                             self.state
                                 .store
@@ -411,16 +531,34 @@ impl App {
                         });
 
                     if ui
-                        .button("📋")
-                        .on_hover_text_at_pointer("copy URL")
+                        .button("\u{1F4CB}")
+                        .on_hover_text_at_pointer("Copy URL")
                         .clicked()
                     {
                         ui.output_mut(|o| o.copied_text = mc.spec.url.to_owned());
                     }
 
+                    if let Some(modio_id) = info.modio_id
+                        && let Some(modio_provider_params) = self.state.config.provider_parameters.get("modio")
+                        && let Some(oauth_token) = modio_provider_params.get("oauth")
+                        && ui
+                            .button("\u{2139}")
+                            .on_hover_text_at_pointer("View details")
+                            .clicked()
+                    {
+                        self.detailed_mod_info_windows.insert(modio_id, WindowDetailedModInfo { info: info.clone() });
+                        self.fetch_mod_details_rid.insert(modio_id, message::FetchModDetails::send(
+                            &mut self.request_counter,
+                            ui.ctx(),
+                            self.tx.clone(),
+                            oauth_token,
+                            modio_id
+                        ));
+                    }
+
                     if mc.enabled {
                         let is_duplicate = enabled_specs.iter().any(|(i, spec)| {
-                            Some(state.index) != *i && info.spec.satisfies_dependency(spec)
+                            Some(row_index) != *i && info.spec.satisfies_dependency(spec)
                         });
                         if is_duplicate
                             && ui
@@ -428,10 +566,10 @@ impl App {
                                     egui::RichText::new("\u{26A0}")
                                         .color(ui.visuals().warn_fg_color),
                                 )
-                                .on_hover_text_at_pointer("remove duplicate")
+                                .on_hover_text_at_pointer("Remove duplicate")
                                 .clicked()
                         {
-                            ctx.btn_remove = Some(state.index);
+                            ctx.btn_remove = Some(row_index);
                         }
 
                         let missing_deps = info
@@ -461,23 +599,28 @@ impl App {
                         }
                     }
 
+                    let vis = ui.visuals();
                     let mut job = LayoutJob::default();
                     let mut is_match = false;
-                    if let Some(search_string) = &self.search_string {
-                        for (m, chunk) in FindString::new(&info.name, search_string) {
+                    let default = TextFormat {
+                        color: vis.hyperlink_color,
+                        ..Default::default()
+                    };
+                    if !self.search_string.is_empty() {
+                        for (m, chunk) in FindString::new(&info.name, &self.search_string) {
                             let background = if m {
                                 is_match = true;
                                 TextFormat {
                                     background: Color32::YELLOW,
-                                    ..Default::default()
+                                    ..default.clone()
                                 }
                             } else {
-                                Default::default()
+                                default.clone()
                             };
                             job.append(chunk, 0.0, background);
                         }
                     } else {
-                        job.append(&info.name, 0.0, Default::default());
+                        job.append(&info.name, 0.0, default);
                     }
 
                     match info.provider {
@@ -493,20 +636,53 @@ impl App {
                                         pixels.as_slice(),
                                     );
 
-                                    ui.ctx()
-                                        .load_texture("modio-logo", image, Default::default())
+                                    ui.ctx().load_texture("modio-logo", image, Default::default())
                                 });
-                            let mut img = egui::Image::new(texture, [16.0, 16.0]);
+                            let mut img = egui::Image::new(texture).fit_to_exact_size([16.0, 16.0].into());
                             if !mc.enabled {
                                 img = img.tint(Color32::LIGHT_RED);
                             }
                             ui.add(img);
                         }
                         "http" => {
-                            ui.label("🌐");
+                            let texture: &egui::TextureHandle =
+                                self.http_texture_handle.get_or_insert_with(|| {
+                                    let image = image::load_from_memory(HTTP_LOGO_PNG).unwrap();
+                                    let size = [image.width() as _, image.height() as _];
+                                    let image_buffer = image.to_rgba8();
+                                    let pixels = image_buffer.as_flat_samples();
+                                    let image = egui::ColorImage::from_rgba_unmultiplied(
+                                        size,
+                                        pixels.as_slice(),
+                                    );
+
+                                    ui.ctx().load_texture("http-logo", image, Default::default())
+                                });
+                            let mut img = egui::Image::new(texture).fit_to_exact_size([16.0, 16.0].into());
+                            if !mc.enabled {
+                                img = img.tint(Color32::LIGHT_RED);
+                            }
+                            ui.add(img);
                         }
                         "file" => {
-                            ui.label("📁");
+                            let texture: &egui::TextureHandle =
+                                self.folder_texture_handle.get_or_insert_with(|| {
+                                    let image = image::load_from_memory(FOLDER_LOGO_PNG).unwrap();
+                                    let size = [image.width() as _, image.height() as _];
+                                    let image_buffer = image.to_rgba8();
+                                    let pixels = image_buffer.as_flat_samples();
+                                    let image = egui::ColorImage::from_rgba_unmultiplied(
+                                        size,
+                                        pixels.as_slice(),
+                                    );
+
+                                    ui.ctx().load_texture("folder-logo", image, Default::default())
+                                });
+                            let mut img = egui::Image::new(texture).fit_to_exact_size([16.0, 16.0].into());
+                            if !mc.enabled {
+                                img = img.tint(Color32::LIGHT_RED);
+                            }
+                            ui.add(img);
                         }
                         _ => unimplemented!("unimplemented provider kind"),
                     }
@@ -522,7 +698,7 @@ impl App {
                     });
                 } else {
                     if ui
-                        .button("📋")
+                        .button("\u{1F4CB}")
                         .on_hover_text_at_pointer("Copy URL")
                         .clicked()
                     {
@@ -533,14 +709,22 @@ impl App {
             };
 
             let mut ui_item =
-                |ctx: &mut Ctx, ui: &mut Ui, mc: &mut ModOrGroup, state: egui_dnd::ItemState| {
-                    if ui.button(" ➖ ").clicked() {
-                        ctx.btn_remove = Some(state.index);
-                    }
+                |ctx: &mut Ctx, ui: &mut Ui, mc: &mut ModOrGroup, row_index: usize| {
+                    ui.scope(|ui| {
+                        ui.visuals_mut().widgets.hovered.weak_bg_fill = colors::DARK_RED;
+                        ui.visuals_mut().widgets.active.weak_bg_fill = colors::DARKER_RED;
+                        if ui
+                            .add(Button::new("\u{1F5D1}"))
+                            .on_hover_text_at_pointer("Delete mod")
+                            .clicked()
+                        {
+                            ctx.btn_remove = Some(row_index);
+                        };
+                    });
 
                     match mc {
                         ModOrGroup::Individual(mc) => {
-                            ui_mod(ctx, ui, None, state, mc);
+                            ui_mod(ctx, ui, None, row_index, mc);
                         }
                         ModOrGroup::Group {
                             ref group_name,
@@ -548,7 +732,7 @@ impl App {
                         } => {
                             if ui
                                 .add(toggle_switch(enabled))
-                                .on_hover_text_at_pointer("enabled?")
+                                .on_hover_text_at_pointer("Enabled?")
                                 .changed()
                             {
                                 ctx.needs_save = true;
@@ -561,53 +745,94 @@ impl App {
                                     .iter_mut()
                                     .enumerate()
                                 {
-                                    ui.horizontal(|ui| {
-                                        ui_mod(
-                                            ctx,
-                                            ui,
-                                            Some(group_name),
-                                            egui_dnd::ItemState {
-                                                index,
-                                                dragged: false,
-                                            },
-                                            m,
-                                        )
-                                    });
+                                    ui.horizontal(|ui| ui_mod(ctx, ui, Some(group_name), index, m));
                                 }
                             });
                         }
                     }
                 };
 
-            let res = egui_dnd::dnd(ui, ui.id()).show(
-                profile.mods.iter_mut().enumerate(),
-                |ui, (_index, item), handle, state| {
-                    let mut frame = egui::Frame::none();
-                    if state.dragged {
-                        frame.fill = ui.visuals().extreme_bg_color
-                    } else if state.index % 2 == 1 {
-                        frame.fill = ui.visuals().faint_bg_color
-                    }
-                    frame.show(ui, |ui| {
-                        ui.horizontal(|ui| {
-                            handle.ui(ui, |ui| {
-                                ui.label("☰");
+            if let Some(sorting_config) = sorting_config {
+                let comp = sort_mods(sorting_config);
+                profile
+                    .mods
+                    .iter_mut()
+                    .map(|m| {
+                        // fetch ModInfo up front because doing it in the comparator is slow
+                        let ModOrGroup::Individual(mc) = m else {
+                            unimplemented!("Item is not Individual \n{:?}", m);
+                        };
+                        let info = self.state.store.get_mod_info(&mc.spec);
+                        (m, info)
+                    })
+                    .enumerate()
+                    .sorted_by(|a, b| comp((a.1 .0, a.1 .1.as_ref()), (b.1 .0, b.1 .1.as_ref())))
+                    .enumerate()
+                    .for_each(|(visual_index, (store_index, item))| {
+                        let mut frame = egui::Frame::none();
+                        if visual_index % 2 == 1 {
+                            frame.fill = ui.visuals().faint_bg_color
+                        }
+                        frame.show(ui, |ui| {
+                            ui.horizontal(|ui| {
+                                ui_item(&mut ctx, ui, item.0, store_index);
                             });
-
-                            ui_item(&mut ctx, ui, item, state);
                         });
                     });
-                },
-            );
+            } else {
+                let res = egui_dnd::dnd(ui, ui.id())
+                    .with_mouse_config(egui_dnd::DragDropConfig::mouse())
+                    .show(
+                        profile.mods.iter_mut().enumerate(),
+                        |ui, (_index, item), handle, state| {
+                            let mut frame = egui::Frame::none();
+                            if state.dragged {
+                                frame.fill = ui.visuals().extreme_bg_color
+                            } else if state.index % 2 == 1 {
+                                frame.fill = ui.visuals().faint_bg_color
+                            }
+                            frame.show(ui, |ui| {
+                                ui.horizontal(|ui| {
+                                    handle.ui(ui, |ui| {
+                                        ui.label("\u{2630}");
+                                    });
 
-            if res.final_update().is_some() {
-                res.update_vec(&mut profile.mods);
-                ctx.needs_save = true;
+                                    ui_item(&mut ctx, ui, item, state.index);
+                                });
+                            });
+                        },
+                    );
+
+                if res.final_update().is_some() {
+                    res.update_vec(&mut profile.mods);
+                    ctx.needs_save = true;
+                }
             }
 
-            if let Some(remove) = ctx.btn_remove {
-                profile.mods.remove(remove);
-                ctx.needs_save = true;
+            if let Some(index) = self.pending_delete {
+                egui::Window::new("Delete Mod")
+                    .collapsible(false)
+                    .resizable(false)
+                    .show(ui.ctx(), |ui| {
+                        ui.add_space(10.);
+                        ui.label("Are you sure you want to delete this mod from the current profile? This cannot be undone.");
+                        ui.add_space(10.);
+
+                        ui.with_layout(egui::Layout::right_to_left(Align::TOP), |ui| {
+                            if ui
+                                .add(egui::Button::new(RichText::new("Delete").color(Color32::WHITE)).fill(Color32::DARK_RED))
+                                .clicked()
+                            {
+                                profile.mods.remove(index);
+                                ctx.needs_save = true;
+                                self.pending_delete = None;
+                            }
+
+                            if ui.button("Cancel").clicked() {
+                                self.pending_delete = None;
+                            }
+                        });
+                    });
             }
         };
 
@@ -615,9 +840,13 @@ impl App {
             if let Some(profile) = profiles.get_mut(profile) {
                 ui_profile(ui, profile);
             } else {
-                ui.label("no such profile");
+                ui.label("No such profile");
             }
         });
+
+        if let Some(index) = ctx.btn_remove {
+            self.pending_delete = Some(index);
+        }
 
         if let Some(add_deps) = ctx.add_deps {
             message::ResolveMods::send(self, ui.ctx(), add_deps, true);
@@ -651,11 +880,9 @@ impl App {
     }
 
     fn show_update_window(&mut self, ctx: &egui::Context) {
-        if let (Some(update), Some(update_time)) =
+        if let (Some(update), Some(_)) =
             (self.available_update.as_ref(), self.show_update_time)
         {
-            let now = SystemTime::now();
-            let wait_time = Duration::from_secs(10);
             egui::Area::new("available-update-overlay")
                 .movable(false)
                 .fixed_pos(Pos2::ZERO)
@@ -667,25 +894,65 @@ impl App {
                             ui.allocate_space(ui.available_size());
                         })
                 });
-            egui::Window::new(format!("Update Available: {}", update.tag_name))
-                .collapsible(false)
-                .anchor(Align2::CENTER_CENTER, Vec2::ZERO)
-                .resizable(false)
-                .show(ctx, |ui| {
-                    CommonMarkViewer::new("available-update")
-                        .max_image_width(Some(512))
-                        .show(ui, &mut self.cache, &update.body);
-                    ui.with_layout(egui::Layout::right_to_left(Align::TOP), |ui| {
-                        let elapsed = now.duration_since(update_time).unwrap_or_default();
-                        if elapsed > wait_time {
+            if let Some(MessageHandle { state, .. }) = &self.self_update_rid {
+                egui::Window::new("Update Progress")
+                    .collapsible(false)
+                    .anchor(Align2::CENTER_CENTER, Vec2::ZERO)
+                    .resizable(false)
+                    .show(ctx, |ui| {
+                        ui.with_layout(egui::Layout::top_down_justified(Align::Center), |ui| {
+                            match state {
+                                SelfUpdateProgress::Pending => {
+                                    ui.add(egui::ProgressBar::new(0.0).show_percentage());
+                                }
+                                SelfUpdateProgress::Progress { progress, size } => {
+                                    ui.add(
+                                        egui::ProgressBar::new(*progress as f32 / *size as f32)
+                                            .show_percentage(),
+                                    );
+                                }
+                                SelfUpdateProgress::Complete => {
+                                    ui.add(egui::ProgressBar::new(1.0).show_percentage());
+                                    ui.label(
+                                        egui::RichText::new("Update successful.")
+                                            .color(Color32::LIGHT_GREEN),
+                                    );
+
+                                    if ui.button("Restart").clicked() {
+                                        self.needs_restart = true;
+                                    }
+                                }
+                            };
+                        });
+                    });
+            } else {
+                egui::Window::new(format!("Update Available: {}", update.tag_name))
+                    .collapsible(false)
+                    .anchor(Align2::CENTER_CENTER, Vec2::ZERO)
+                    .resizable(false)
+                    .show(ctx, |ui| {
+                        CommonMarkViewer::new("available-update")
+                            .max_image_width(Some(512))
+                            .show(ui, &mut self.update_cmark_cache, &update.body);
+                        ui.with_layout(egui::Layout::right_to_left(Align::TOP), |ui| {
+                            if ui
+                                .add(egui::Button::new("Install"))
+                                .on_hover_text("Download and install the update.")
+                                .clicked()
+                            {
+                                self.self_update_rid = Some(message::SelfUpdate::send(
+                                    &mut self.request_counter,
+                                    self.tx.clone(),
+                                    ctx.clone(),
+                                ));
+                            }
+
                             if ui.button("Close").clicked() {
                                 self.show_update_time = None;
                             }
-                        } else {
-                            ui.spinner();
-                        }
+                        });
                     });
-                });
+            }
         }
     }
 
@@ -801,9 +1068,12 @@ impl App {
                 .resizable(false)
                 .show(ctx, |ui| {
                     egui::Grid::new("grid").num_columns(2).show(ui, |ui| {
+                        ui.heading("Game Data");
+                        ui.end_row();
+
                         let mut job = LayoutJob::default();
                         job.append(
-                            "DRG pak",
+                            "pak directory:",
                             0.0,
                             TextFormat {
                                 color: ui.visuals().text_color(),
@@ -811,13 +1081,15 @@ impl App {
                                 ..Default::default()
                             },
                         );
-                        ui.label(job).on_hover_cursor(egui::CursorIcon::Help).on_hover_text("Path to FSD-WindowsNoEditor.pak (FSD-WinGDK.pak for Microsoft Store version)\nLocated inside the \"Deep Rock Galactic\" installation directory under FSD/Content/Paks.");
+                        ui.label(job).on_hover_cursor(egui::CursorIcon::Help).on_hover_text(
+                            "Path to \"FSD-WindowsNoEditor.pak\" or \"FSD-WinGDK.pak\" located inside Deep Rock Galactic installation directory under \"/FSD/Content/Paks\"."
+                        );
                         ui.horizontal(|ui| {
                             let res = ui.add(
                                 egui::TextEdit::singleline(
                                     &mut window.drg_pak_path
                                 )
-                                .desired_width(200.0),
+                                .desired_width(300.0),
                             );
                             if res.changed() {
                                 window.drg_pak_path_err = None;
@@ -825,9 +1097,9 @@ impl App {
                             if is_committed(&res) {
                                 try_save = true;
                             }
-                            if ui.button("browse").clicked() {
+                            if ui.button("Browse...").clicked() {
                                 if let Some(fsd_pak) = rfd::FileDialog::new()
-                                    .add_filter("DRG Pak", &["pak"])
+                                    .add_filter("DRG pak", &["pak"])
                                     .pick_file()
                                 {
                                     window.drg_pak_path = fsd_pak.to_string_lossy().to_string();
@@ -837,26 +1109,64 @@ impl App {
                         });
                         ui.end_row();
 
-                        let config_dir = self.state.project_dirs.config_dir();
+                        ui.add_space(1.);
+                        ui.end_row();
+
+                        ui.heading("App Data");
+                        ui.end_row();
+
+                        let config_dir = &self.state.dirs.config_dir;
                         ui.label("Config directory:");
                         if ui.link(config_dir.display().to_string()).clicked() {
                             opener::open(config_dir).ok();
                         }
                         ui.end_row();
 
-                        let cache_dir = self.state.project_dirs.cache_dir();
+                        let cache_dir = &self.state.dirs.cache_dir;
                         ui.label("Cache directory:");
                         if ui.link(cache_dir.display().to_string()).clicked() {
                             opener::open(cache_dir).ok();
                         }
                         ui.end_row();
 
-                        ui.label("Mod providers:");
+                        let data_dir = &self.state.dirs.data_dir;
+                        ui.label("Data directory:");
+                        if ui.link(data_dir.display().to_string()).clicked() {
+                            opener::open(data_dir).ok();
+                        }
+                        ui.end_row();
+
+                        ui.add_space(1.);
+                        ui.end_row();
+
+                        ui.heading("UI Theme");
+                        ui.end_row();
+
+                        ui.label("Color scheme:");
+                        ui.horizontal(|ui| {
+                            ui.horizontal(|ui| {
+                                let config = &mut self.state.config;
+                                let changed =
+                                    ui.selectable_value(&mut config.gui_theme, Some(GuiTheme::Light), "Light").changed() ||
+                                    ui.selectable_value(&mut config.gui_theme, Some(GuiTheme::Dark), "Dark").changed() ||
+                                    ui.selectable_value(&mut config.gui_theme, None, "System").changed();
+                                if changed {
+                                    ctx.set_visuals(config.gui_theme.map(GuiTheme::visuals).unwrap_or_else(|| self.default_visuals.clone()));
+                                    config.save().unwrap();
+                                }
+                            });
+                        });
+                        ui.end_row();
+
+                        ui.add_space(1.);
+                        ui.end_row();
+
+                        ui.heading("Mod Providers");
                         ui.end_row();
 
                         for provider_factory in ModStore::get_provider_factories() {
                             ui.label(provider_factory.id);
-                            if ui.add_enabled(!provider_factory.parameters.is_empty(), egui::Button::new("⚙"))
+                            if ui.add_enabled(!provider_factory.parameters.is_empty(), egui::Button::new("\u{2699}"))
                                     .on_hover_text(format!("Open \"{}\" settings", provider_factory.id))
                                     .clicked() {
                                 self.window_provider_parameters = Some(
@@ -868,7 +1178,7 @@ impl App {
                     });
 
                     ui.with_layout(egui::Layout::right_to_left(Align::TOP), |ui| {
-                        if ui.add_enabled(window.drg_pak_path_err.is_none(), egui::Button::new("save")).clicked() {
+                        if ui.add_enabled(window.drg_pak_path_err.is_none(), egui::Button::new("Save")).clicked() {
                             try_save = true;
                         }
                         if let Some(error) = &window.drg_pak_path_err {
@@ -878,7 +1188,7 @@ impl App {
 
                 });
             if try_save {
-                if let Err(e) = is_drg_pak(&window.drg_pak_path).context("Is not valid DRG pak") {
+                if let Err(e) = is_drg_pak(&window.drg_pak_path).context("Selected pak is not valid.") {
                     window.drg_pak_path_err = Some(e.to_string());
                 } else {
                     self.state.config.drg_pak_path = Some(PathBuf::from(
@@ -893,12 +1203,10 @@ impl App {
     }
 
     fn show_lints_toggle(&mut self, ctx: &egui::Context) {
-        if let Some(lints_toggle) = &self.lints_toggle_window {
+        if let Some(_lints_toggle) = &self.lints_toggle_window {
             let mut open = true;
 
-            let mods = lints_toggle.mods.clone();
-
-            egui::Window::new("Toggle lints")
+            egui::Window::new("Toggle Lints")
                 .open(&mut open)
                 .resizable(false)
                 .show(ctx, |ui| {
@@ -1007,6 +1315,14 @@ impl App {
 
                             trace!(?lint_options);
 
+                            let mut mods = Vec::new();
+                            self.state.mod_data.for_each_enabled_mod(
+                                &self.state.mod_data.active_profile,
+                                |mc| {
+                                    mods.push(mc.spec.clone());
+                                },
+                            );
+
                             self.lint_report = None;
                             self.lint_rid = Some(message::LintMods::send(
                                 &mut self.request_counter,
@@ -1037,7 +1353,7 @@ impl App {
         if self.lint_report_window.is_some() {
             let mut open = true;
 
-            egui::Window::new("Lint results")
+            egui::Window::new("Lint Results")
                 .open(&mut open)
                 .resizable(true)
                 .show(ctx, |ui| {
@@ -1052,7 +1368,7 @@ impl App {
                                 if let Some(conflicting_mods) = &report.conflicting_mods {
                                     if !conflicting_mods.is_empty() {
                                         CollapsingHeader::new(
-                                            RichText::new("⚠ Mods(s) with conflicting asset modifications detected")
+                                            RichText::new("\u{26A0} Mods(s) with conflicting asset modifications detected")
                                                 .color(AMBER),
                                         )
                                         .default_open(true)
@@ -1060,7 +1376,7 @@ impl App {
                                             conflicting_mods.iter().for_each(|(path, mods)| {
                                                 CollapsingHeader::new(
                                                     RichText::new(format!(
-                                                        "⚠ Conflicting modification of asset `{}`",
+                                                        "\u{26A0} Conflicting modification of asset `{}`",
                                                         path
                                                     ))
                                                     .color(AMBER),
@@ -1081,7 +1397,7 @@ impl App {
                                 if let Some(asset_register_bin_mods) = &report.asset_register_bin_mods {
                                     if !asset_register_bin_mods.is_empty() {
                                         CollapsingHeader::new(
-                                            RichText::new("ℹ Mod(s) with `AssetRegistry.bin` included detected")
+                                            RichText::new("\u{2139} Mod(s) with `AssetRegistry.bin` included detected")
                                                 .color(Color32::LIGHT_BLUE),
                                         )
                                         .default_open(true)
@@ -1090,7 +1406,7 @@ impl App {
                                                 |(r#mod, paths)| {
                                                     CollapsingHeader::new(
                                                         RichText::new(format!(
-                                                        "ℹ {} includes one or more `AssetRegistry.bin`",
+                                                        "\u{2139} {} includes one or more `AssetRegistry.bin`",
                                                         r#mod.url
                                                     ))
                                                         .color(Color32::LIGHT_BLUE),
@@ -1110,7 +1426,7 @@ impl App {
                                     if !shader_file_mods.is_empty() {
                                         CollapsingHeader::new(
                                             RichText::new(
-                                                "⚠ Mods(s) with shader files included detected",
+                                                "\u{26A0} Mods(s) with shader files included detected",
                                             )
                                             .color(AMBER),
                                         )
@@ -1120,7 +1436,7 @@ impl App {
                                                 |(r#mod, shader_files)| {
                                                     CollapsingHeader::new(
                                                         RichText::new(format!(
-                                                            "⚠ {} includes one or more shader files",
+                                                            "\u{26A0} {} includes one or more shader files",
                                                             r#mod.url
                                                         ))
                                                         .color(AMBER),
@@ -1140,7 +1456,7 @@ impl App {
                                     if !outdated_pak_version_mods.is_empty() {
                                         CollapsingHeader::new(
                                             RichText::new(
-                                                "⚠ Mod(s) with outdated pak version detected",
+                                                "\u{26A0} Mod(s) with outdated pak version detected",
                                             )
                                             .color(AMBER),
                                         )
@@ -1150,7 +1466,7 @@ impl App {
                                                 |(r#mod, version)| {
                                                     ui.label(
                                                         RichText::new(format!(
-                                                            "⚠ {} includes outdated pak version {}",
+                                                            "\u{26A0} {} includes outdated pak version {}",
                                                             r#mod.url, version
                                                         ))
                                                         .color(AMBER),
@@ -1165,7 +1481,7 @@ impl App {
                                     if !empty_archive_mods.is_empty() {
                                         CollapsingHeader::new(
                                             RichText::new(
-                                                "⚠ Mod(s) with empty archives detected",
+                                                "\u{26A0} Mod(s) with empty archives detected",
                                             )
                                             .color(AMBER),
                                         )
@@ -1174,7 +1490,7 @@ impl App {
                                             empty_archive_mods.iter().for_each(|r#mod| {
                                                 ui.label(
                                                     RichText::new(format!(
-                                                        "⚠ {} contains an empty archive",
+                                                        "\u{26A0} {} contains an empty archive",
                                                         r#mod.url
                                                     ))
                                                     .color(AMBER),
@@ -1188,7 +1504,7 @@ impl App {
                                     if !archive_with_only_non_pak_files_mods.is_empty() {
                                         CollapsingHeader::new(
                                             RichText::new(
-                                                "⚠ Mod(s) with only non-`.pak` files detected",
+                                                "\u{26A0} Mod(s) with only non-`.pak` files detected",
                                             )
                                             .color(AMBER),
                                         )
@@ -1197,7 +1513,7 @@ impl App {
                                             archive_with_only_non_pak_files_mods.iter().for_each(|r#mod| {
                                                 ui.label(
                                                     RichText::new(format!(
-                                                        "⚠ {} contains only non-`.pak` files, perhaps the author forgot to pack it?",
+                                                        "\u{26A0} {} contains only non-`.pak` files, perhaps the author forgot to pack it?",
                                                         r#mod.url
                                                     ))
                                                     .color(AMBER),
@@ -1211,7 +1527,7 @@ impl App {
                                     if !archive_with_multiple_paks_mods.is_empty() {
                                         CollapsingHeader::new(
                                             RichText::new(
-                                                "⚠ Mod(s) with multiple `.pak`s detected",
+                                                "\u{26A0} Mod(s) with multiple `.pak`s detected",
                                             )
                                             .color(AMBER),
                                         )
@@ -1219,7 +1535,7 @@ impl App {
                                         .show(ui, |ui| {
                                             archive_with_multiple_paks_mods.iter().for_each(|r#mod| {
                                                 ui.label(RichText::new(format!(
-                                                    "⚠ {} contains multiple `.pak`s, only the first encountered `.pak` will be loaded",
+                                                    "\u{26A0} {} contains multiple `.pak`s, only the first encountered `.pak` will be loaded",
                                                     r#mod.url
                                                 ))
                                                 .color(AMBER));
@@ -1232,7 +1548,7 @@ impl App {
                                     if !non_asset_file_mods.is_empty() {
                                         CollapsingHeader::new(
                                             RichText::new(
-                                                "⚠ Mod(s) with non-asset files detected",
+                                                "\u{26A0} Mod(s) with non-asset files detected",
                                             )
                                             .color(AMBER),
                                         )
@@ -1241,7 +1557,7 @@ impl App {
                                             non_asset_file_mods.iter().for_each(|(r#mod, files)| {
                                                 CollapsingHeader::new(
                                                     RichText::new(format!(
-                                                        "⚠ {} includes non-asset files",
+                                                        "\u{26A0} {} includes non-asset files",
                                                         r#mod.url
                                                     ))
                                                     .color(AMBER),
@@ -1260,7 +1576,7 @@ impl App {
                                     if !split_asset_pairs_mods.is_empty() {
                                         CollapsingHeader::new(
                                             RichText::new(
-                                                "⚠ Mod(s) with split {uexp, uasset} pairs detected",
+                                                "\u{26A0} Mod(s) with split {uexp, uasset} pairs detected",
                                             )
                                             .color(AMBER),
                                         )
@@ -1269,7 +1585,7 @@ impl App {
                                             split_asset_pairs_mods.iter().for_each(|(r#mod, files)| {
                                                 CollapsingHeader::new(
                                                     RichText::new(format!(
-                                                        "⚠ {} includes split {{uexp, uasset}} pairs",
+                                                        "\u{26A0} {} includes split {{uexp, uasset}} pairs",
                                                         r#mod.url
                                                     ))
                                                     .color(AMBER),
@@ -1295,7 +1611,7 @@ impl App {
                                     if !unmodified_game_assets_mods.is_empty() {
                                         CollapsingHeader::new(
                                             RichText::new(
-                                                "⚠ Mod(s) with unmodified game assets detected",
+                                                "\u{26A0} Mod(s) with unmodified game assets detected",
                                             )
                                             .color(AMBER),
                                         )
@@ -1304,7 +1620,7 @@ impl App {
                                             unmodified_game_assets_mods.iter().for_each(|(r#mod, files)| {
                                                 CollapsingHeader::new(
                                                     RichText::new(format!(
-                                                        "⚠ {} includes unmodified game assets",
+                                                        "\u{26A0} {} includes unmodified game assets",
                                                         r#mod.url
                                                     ))
                                                     .color(AMBER),
@@ -1330,6 +1646,255 @@ impl App {
                 self.lint_rid = None;
             }
         }
+    }
+
+    fn show_about(&mut self, ctx: &egui::Context) {
+        if let Some(_) = self.about_window {
+            let mut open = true;
+
+            egui::Window::new("About")
+                .open(&mut open)
+                .resizable(false)
+                .show(ctx, |ui| {
+                    ui.add_space(10.);
+                    ui.vertical_centered(|ui| {
+                        let texture: &egui::TextureHandle =
+                            self.header_texture_handle.get_or_insert_with(|| {
+                                let image = image::load_from_memory(HEADER_PNG).unwrap();
+                                let size = [image.width() as _, image.height() as _];
+                                let image_buffer = image.to_rgba8();
+                                let pixels = image_buffer.as_flat_samples();
+                                let color_image = egui::ColorImage::from_rgba_unmultiplied(
+                                    size,
+                                    pixels.as_slice(),
+                                );
+
+                                ui.ctx().load_texture("header", color_image, Default::default())
+                            });
+
+                        ui.add(egui::Image::new(texture));
+                    });
+                    ui.add_space(10.);
+
+                    ui.label("Third-party mod integration tool for Deep Rock Galactic.");
+                    ui.horizontal(|ui| {
+                        ui.spacing_mut().item_spacing.x = 0.0;
+                        ui.label("For more information about this fork, see the ");
+                        ui.hyperlink_to("README", "https://github.com/Strappazzon/drg-mint-notag/blob/master/.github/README.md");
+                        ui.label(".");
+                    });
+                    ui.add_space(10.);
+
+                    ui.hyperlink_to("Changelog", "https://github.com/Strappazzon/drg-mint-notag/blob/-/CHANGELOG.md");
+                    ui.hyperlink_to("License", "https://github.com/Strappazzon/drg-mint-notag/blob/-/LICENSE.txt");
+                    ui.hyperlink_to("GitHub", "https://github.com/Strappazzon/drg-mint-notag");
+                    ui.add_space(10.);
+
+                    ui.horizontal(|ui| {
+                        ui.spacing_mut().item_spacing.x = 0.0;
+                        ui.label("App icon \"Rock\" from ");
+                        ui.hyperlink_to("Icons8", "https://icons8.com/icon/6zZTdWRZoWil/rock");
+                        ui.label(".");
+                    });
+                    ui.add_space(10.);
+
+                    ui.with_layout(egui::Layout::right_to_left(Align::TOP), |ui| {
+                        if ui.button("Close").clicked() {
+                            self.about_window = None;
+                        }
+                    });
+                });
+            if !open {
+                self.about_window = None;
+            }
+        }
+    }
+
+    fn show_detailed_mod_info(&mut self, ctx: &egui::Context, modio_id: u32) {
+        let mut to_remove = Vec::new();
+
+        if let Some(WindowDetailedModInfo { info }) = self.detailed_mod_info_windows.get(&modio_id)
+        {
+            let mut open = true;
+
+            egui::Window::new(&info.name)
+                .open(&mut open)
+                .collapsible(false)
+                .movable(true)
+                // https://github.com/trumank/mint/pull/84#issuecomment-1688124034
+                .resizable(false)
+                .show(ctx, |ui| self.show_detailed_mod_info_inner(ui, modio_id));
+
+            if !open {
+                to_remove.push(modio_id);
+            }
+        }
+
+        for id in to_remove {
+            self.detailed_mod_info_windows.remove(&id);
+            self.mod_details.remove(&id);
+            self.fetch_mod_details_rid.remove(&id);
+            self.mod_details_thumbnail_texture_handle.remove(&id);
+        }
+    }
+
+    fn show_detailed_mod_info_inner(&mut self, ui: &mut egui::Ui, modio_id: u32) {
+        if let Some(mod_details) = &self.mod_details.get(&modio_id) {
+            let scroll_area_height = (ui.available_height() - 60.0).clamp(0.0, f32::INFINITY);
+
+            egui::ScrollArea::vertical()
+                .max_height(scroll_area_height)
+                .max_width(f32::INFINITY)
+                .auto_shrink([false, false])
+                .stick_to_right(true)
+                .show(ui, |ui| {
+                    let texture: &egui::TextureHandle = self
+                        .mod_details_thumbnail_texture_handle
+                        .entry(modio_id)
+                        .or_insert_with(|| {
+                            ui.ctx().load_texture(
+                                format!("{} image", mod_details.r#mod.name),
+                                {
+                                    let image =
+                                        image::load_from_memory(&mod_details.thumbnail).unwrap();
+                                    let size = [image.width() as _, image.height() as _];
+                                    let image_buffer = image.to_rgb8();
+                                    let pixels = image_buffer.as_flat_samples();
+                                    egui::ColorImage::from_rgb(size, pixels.as_slice())
+                                },
+                                Default::default(),
+                            )
+                        });
+                    ui.vertical_centered(|ui| {
+                        ui.add(egui::Image::new(texture));
+                    });
+
+                    ui.heading("Uploader");
+                    ui.label(&mod_details.r#mod.submitted_by.username);
+                    ui.add_space(10.0);
+
+                    ui.heading("Description");
+                    if let Some(desc) = &mod_details.r#mod.description_plaintext {
+                        ui.label(desc);
+                    } else {
+                        ui.label("No description provided.");
+                    }
+                    ui.add_space(10.0);
+
+                    ui.heading("Versions and Changelog");
+                    ui.label(
+                        RichText::new("Only the 10 most recent versions are shown.")
+                            .color(Color32::GRAY),
+                    );
+                    egui::Grid::new("mod-details-available-versions")
+                        .spacing(Vec2::new(3.0, 10.0))
+                        .striped(true)
+                        .num_columns(2)
+                        .show(ui, |ui| {
+                            mod_details.versions.iter().for_each(|file| {
+                                if let Some(version) = &file.version {
+                                    ui.label(version);
+                                } else {
+                                    ui.label("Unknown version");
+                                }
+                                if let Some(changelog) = &file.changelog {
+                                    ui.add(Label::new(changelog).wrap(true));
+                                } else {
+                                    ui.label("N/A");
+                                }
+                                ui.end_row();
+                            });
+                        });
+                    ui.add_space(10.0);
+
+                    ui.heading("Files");
+                    if let Some(file) = &mod_details.r#mod.modfile {
+                        ui.horizontal(|ui| {
+                            if let Some(version) = &file.version {
+                                ui.label(version);
+                            } else {
+                                ui.label("Unknown version");
+                            }
+                            ui.hyperlink(&file.download.binary_url);
+                        });
+                    } else {
+                        ui.label("No files provided.");
+                    }
+                });
+        } else {
+            ui.horizontal(|ui| {
+                ui.spinner();
+                ui.label("Fetching mod details from mod.io...");
+            });
+        }
+    }
+
+    fn get_sorting_config(&self) -> Option<SortingConfig> {
+        self.state.config.sorting_config.clone()
+    }
+
+    fn update_sorting_config(&mut self, sort_category: Option<SortBy>, is_ascending: bool) {
+        self.state.config.sorting_config = sort_category.map(|sort_category| SortingConfig {
+            sort_category,
+            is_ascending,
+        });
+        self.state.config.save().unwrap();
+    }
+}
+
+
+fn sort_mods(
+    config: SortingConfig,
+) -> impl Fn((&ModOrGroup, Option<&ModInfo>), (&ModOrGroup, Option<&ModInfo>)) -> Ordering {
+    move |(a, info_a), (b, info_b)| {
+        if matches!(a, ModOrGroup::Group { .. }) || matches!(b, ModOrGroup::Group { .. }) {
+            unimplemented!("Groups in sorting not implemented");
+        }
+
+        let ModOrGroup::Individual(mc_a) = a else {
+            debug!("Item is not Individual \n{:?}", a);
+            return Ordering::Equal;
+        };
+        let ModOrGroup::Individual(mc_b) = b else {
+            debug!("Item is not Individual \n{:?}", b);
+            return Ordering::Equal;
+        };
+
+    fn map_cmp<V, M, F>(a: &V, b: &V, map: F) -> Ordering
+        where
+            M: Ord,
+            F: Fn(&V) -> M,
+        {
+            map(a).cmp(&map(b))
+        }
+
+        let name_order = map_cmp(&(mc_a, info_a), &(mc_b, info_b), |(mc, info)| {
+            (info.map(|i| i.name.to_lowercase()), &mc.spec.url)
+        });
+        let provider_order = map_cmp(&info_a, &info_b, |info| info.map(|i| i.provider));
+        let approval_order = map_cmp(&info_a, &info_b, |info| {
+            info.and_then(|i| i.modio_tags.as_ref())
+                .map(|t| t.approval_status)
+        });
+        let required_order = map_cmp(&info_a, &info_b, |info| {
+            info.and_then(|i| i.modio_tags.as_ref())
+                .map(|t| std::cmp::Reverse(t.required_status))
+        });
+        let mut order = match config.sort_category {
+            SortBy::Enabled => mc_b.enabled.cmp(&mc_a.enabled),
+            SortBy::Name => name_order,
+            SortBy::Provider => provider_order,
+            SortBy::RequiredStatus => required_order,
+            SortBy::ApprovalCategory => approval_order,
+        };
+
+        if config.is_ascending {
+            order = order.reverse();
+        }
+        if config.sort_category != SortBy::Name {
+            order = order.then(name_order);
+        }
+        order
     }
 }
 
@@ -1383,14 +1948,43 @@ impl WindowSettings {
 
 struct WindowLintReport;
 
-struct WindowLintsToggle {
-    mods: Vec<ModSpecification>,
+struct WindowLintsToggle;
+
+struct WindowAbout;
+
+struct WindowDetailedModInfo {
+    info: ModInfo,
 }
 
 impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        if !self.checked_updates_initially {
-            self.checked_updates_initially = true;
+        if self.needs_restart
+            && let Some(original_exe_path) = &self.original_exe_path
+        {
+            debug!("needs restart");
+            self.needs_restart = false;
+
+            debug!("restarting...");
+            let _child = std::process::Command::new(original_exe_path)
+                .spawn()
+                .unwrap();
+            debug!("created child process");
+
+            std::process::exit(0);
+        }
+
+        // do some init things that depend on ctx so cannot be done earlier
+        if !self.has_run_init {
+            self.has_run_init = true;
+
+            ctx.set_visuals(
+                self.state
+                    .config
+                    .gui_theme
+                    .map(GuiTheme::visuals)
+                    .unwrap_or_else(|| self.default_visuals.clone()),
+            );
+
             message::CheckUpdates::send(self, ctx);
         }
 
@@ -1404,9 +1998,20 @@ impl eframe::App for App {
         self.show_update_window(ctx);
         self.show_provider_parameters(ctx);
         self.show_profile_windows(ctx);
+        self.show_about(ctx);
         self.show_settings(ctx);
         self.show_lints_toggle(ctx);
         self.show_lint_report(ctx);
+
+        let modio_ids = self
+            .detailed_mod_info_windows
+            .keys()
+            .copied()
+            .collect::<Vec<_>>();
+
+        for modio_id in modio_ids {
+            self.show_detailed_mod_info(ctx, modio_id);
+        }
 
         egui::TopBottomPanel::bottom("bottom_panel").show(ctx, |ui| {
             ui.with_layout(egui::Layout::right_to_left(Align::TOP), |ui| {
@@ -1414,35 +2019,48 @@ impl eframe::App for App {
                     self.integrate_rid.is_none()
                         && self.update_rid.is_none()
                         && self.lint_rid.is_none()
+                        && self.self_update_rid.is_none()
+                        && self.detailed_mod_info_windows.is_empty()
+                        && self.fetch_mod_details_rid.is_empty()
                         && self.state.config.drg_pak_path.is_some(),
                     |ui| {
                         if let Some(args) = &self.args {
-                            if ui.button("Launch game").on_hover_ui(|ui| for arg in args {
-                                ui.label(arg);
-                            }).clicked() {
+                            if ui
+                                .button("Launch game")
+                                .on_hover_ui(|ui| {
+                                    for arg in args {
+                                        ui.label(arg);
+                                    }
+                                })
+                                .clicked()
+                            {
                                 let args = args.clone();
                                 tokio::task::spawn_blocking(move || {
                                     let mut iter = args.iter();
-                                    std::process::Command::new(
-                                        iter.next().unwrap(),
-                                        ).args(iter).spawn().unwrap();
+                                    std::process::Command::new(iter.next().unwrap())
+                                        .args(iter)
+                                        .spawn()
+                                        .unwrap();
                                 });
                             }
                         }
 
                         ui.add_enabled_ui(self.state.config.drg_pak_path.is_some(), |ui| {
-                            let mut button = ui.button("Install mods");
+                            let mut button = ui
+                                .button("Apply changes")
+                                .on_hover_text("Installs the DLL hook inside the game folder and regenerates mod bundle");
                             if self.state.config.drg_pak_path.is_none() {
-                                button = button.on_disabled_hover_text(
-                                    "DRG install not found. Configure it in the settings menu.",
-                                );
+                                button = button
+                                    .on_disabled_hover_text("Game not found. Configure it in the settings menu.");
                             }
 
                             let mut mods = Vec::new();
                             let active_profile = self.state.mod_data.active_profile.clone();
-                            self.state.mod_data.for_each_enabled_mod(&active_profile, |mc| {
-                                mods.push(mc.spec.clone());
-                            });
+                            self.state
+                                .mod_data
+                                .for_each_enabled_mod(&active_profile, |mc| {
+                                    mods.push(mc.spec.clone());
+                                });
 
                             if button.clicked() {
                                 self.last_action_status = LastActionStatus::Idle;
@@ -1458,34 +2076,43 @@ impl eframe::App for App {
                         });
 
                         ui.add_enabled_ui(self.state.config.drg_pak_path.is_some(), |ui| {
-                            let mut button = ui.button("Uninstall mods");
+                            let mut button = ui
+                                .button("Uninstall hook and mods")
+                                .on_hover_text("Removes the DLL hook and mod bundle from the game folder");
                             if self.state.config.drg_pak_path.is_none() {
-                                button = button.on_disabled_hover_text(
-                                    "DRG install not found. Configure it in the settings menu.",
-                                );
+                                button = button
+                                    .on_disabled_hover_text("Game not found. Configure it in the settings menu.");
                             }
                             if button.clicked() {
                                 self.last_action_status = LastActionStatus::Idle;
                                 if let Some(pak_path) = &self.state.config.drg_pak_path {
                                     let mut mods = HashSet::default();
                                     let active_profile = self.state.mod_data.active_profile.clone();
-                                    self.state.mod_data.for_each_enabled_mod(&active_profile, |mc| {
-                                        if let Some(modio_id) = self.state.store
-                                            .get_mod_info(&mc.spec)
-                                            .and_then(|i| i.modio_id) {
+                                    self.state.mod_data.for_each_enabled_mod(
+                                        &active_profile,
+                                        |mc| {
+                                            if let Some(modio_id) = self
+                                                .state
+                                                .store
+                                                .get_mod_info(&mc.spec)
+                                                .and_then(|i| i.modio_id)
+                                            {
                                                 mods.insert(modio_id);
-                                        }
-                                    });
+                                            }
+                                        },
+                                    );
 
                                     debug!("uninstalling mods: pak_path = {}", pak_path.display());
                                     match uninstall(pak_path, mods) {
                                         Ok(()) => {
-                                            self.last_action_status =
-                                            LastActionStatus::Success("Successfully uninstalled mods".to_string());
-                                        },
+                                            self.last_action_status = LastActionStatus::Success(
+                                                "DLL hook and mods removed".to_string(),
+                                            );
+                                        }
                                         Err(e) => {
-                                            self.last_action_status =
-                                            LastActionStatus::Failure(format!("Failed to uninstall mods: {e}"))
+                                            self.last_action_status = LastActionStatus::Failure(
+                                                format!("Failed to uninstall mods: {e}"),
+                                            )
                                         }
                                     }
                                 }
@@ -1494,19 +2121,10 @@ impl eframe::App for App {
 
                         if ui
                             .button("Update cache")
-                            .on_hover_text(
-                                "Checks for updates for all mods and updates local cache\n\
-                                due to strict mod.io rate-limiting, can take a long time for large mod lists",
-                            )
+                            .on_hover_text("Checks for updates for all mods and updates local cache")
                             .clicked()
                         {
-                            let mut mods = Vec::new();
-                            let active_profile = self.state.mod_data.active_profile.clone();
-                            self.state.mod_data.for_each_mod(&active_profile, |mc| {
-                                mods.push(mc.spec.clone());
-                            });
-
-                            message::UpdateCache::send(self, mods);
+                            message::UpdateCache::send(self);
                         }
                     },
                 );
@@ -1522,48 +2140,65 @@ impl eframe::App for App {
                     }
                     ui.spinner();
                 }
-                if ui.button("Lint mods").on_hover_text("Lint mods in the current profile").clicked() {
-                    let mut mods = Vec::new();
-                    let active_profile = self.state.mod_data.active_profile.clone();
-                    self.state.mod_data.for_each_enabled_mod(&active_profile, |mc| {
-                        mods.push(mc.spec.clone());
-                    });
-                    self.lints_toggle_window = Some(WindowLintsToggle { mods });
+                if ui
+                    .button("Lint mods")
+                    .on_hover_text("Lint mods in the current profile")
+                    .clicked()
+                {
+                    self.lints_toggle_window = Some(WindowLintsToggle);
                 }
-                if ui.button("⚙").on_hover_text("Open settings").clicked() {
+                if ui
+                    .button("\u{2699}")
+                    .on_hover_text("Open settings")
+                    .clicked()
+                {
                     self.settings_window = Some(WindowSettings::new(&self.state));
                 }
+                if ui
+                    .button("\u{2139}")
+                    .on_hover_text("About the app")
+                    .clicked()
+                {
+                    self.about_window = Some(WindowAbout);
+                }
                 if let Some(available_update) = &self.available_update {
-                    if ui.button(egui::RichText::new("\u{26A0}").color(ui.visuals().warn_fg_color))
-                        .on_hover_text(format!("Update available: {}\n{}", available_update.tag_name, available_update.html_url))
-                        .clicked() {
-                            ui.ctx().output_mut(|o| {
-                                o.open_url = Some(egui::output::OpenUrl {
-                                    url: available_update.html_url.clone(),
-                                    new_tab: true,
-                                });
+                    if ui
+                        .button(
+                            egui::RichText::new("\u{21BB}").color(Color32::from_rgb(0, 143, 255))
+                        )
+                        .on_hover_text(format!(
+                            "Update available: {}\n{}",
+                            available_update.tag_name, available_update.html_url
+                        ))
+                        .clicked()
+                    {
+                        ui.ctx().output_mut(|o| {
+                            o.open_url = Some(egui::output::OpenUrl {
+                                url: available_update.html_url.clone(),
+                                new_tab: true,
                             });
-                        }
+                        });
+                    }
                 }
                 ui.with_layout(egui::Layout::left_to_right(Align::TOP), |ui| {
                     match &self.last_action_status {
                         LastActionStatus::Success(msg) => {
                             ui.label(
-                                egui::RichText::new("STATUS")
+                                egui::RichText::new(" STATUS ")
                                     .color(Color32::BLACK)
-                                    .background_color(Color32::LIGHT_GREEN)
+                                    .background_color(Color32::LIGHT_GREEN),
                             );
                             ui.label(msg);
-                        },
+                        }
                         LastActionStatus::Failure(msg) => {
                             ui.label(
-                                egui::RichText::new("STATUS")
+                                egui::RichText::new(" STATUS ")
                                     .color(Color32::BLACK)
-                                    .background_color(Color32::LIGHT_RED)
+                                    .background_color(Color32::LIGHT_RED),
                             );
                             ui.label(msg);
-                        },
-                        _ => {},
+                        }
+                        _ => {}
                     }
                 });
             });
@@ -1578,7 +2213,7 @@ impl eframe::App for App {
 
             let buttons = |ui: &mut Ui, mod_data: &mut ModData| {
                 if ui
-                    .button("📋")
+                    .button("\u{1F4CB}")
                     .on_hover_text_at_pointer("Copy profile mods")
                     .clicked()
                 {
@@ -1595,7 +2230,7 @@ impl eframe::App for App {
                 /*
                 if ui
                     .button("pop out")
-                    .on_hover_text_at_pointer("pop out")
+                    .on_hover_text_at_pointer("Pop out")
                     .clicked()
                 {
                     self.open_profiles.insert(mod_data.active_profile.clone());
@@ -1643,12 +2278,41 @@ impl eframe::App for App {
                     }
                 });
             });
+            ui.add_space(6.);
 
             let profile = self.state.mod_data.active_profile.clone();
-            self.ui_profile(ui, &profile);
 
-            // TODO: actually implement mod groups.
-            if let Some(search_string) = &mut self.search_string {
+            ui.horizontal(|ui| {
+                ui.label("Sort by: ");
+
+                let (mut sort_category, mut is_ascending) = self
+                    .get_sorting_config()
+                    .map(|c| (Some(c.sort_category), c.is_ascending))
+                    .unwrap_or_default();
+
+                let mut clicked = ui.radio_value(&mut sort_category, None, "Manual").clicked();
+                for category in SortBy::iter() {
+                    let mut radio_label = category.as_str().to_owned();
+                    if sort_category == Some(category) {
+                        radio_label.push_str(if is_ascending { " ⏶" } else { " ⏷" });
+                    }
+                    let resp = ui.radio_value(&mut sort_category, Some(category), radio_label);
+                    if resp.clicked() {
+                        clicked = true;
+                        if resp.changed() {
+                            is_ascending = true;
+                        } else {
+                            is_ascending = !is_ascending;
+                        }
+                    };
+                }
+                if clicked {
+                    self.update_sorting_config(sort_category, is_ascending);
+                }
+
+                ui.add_space(16.);
+                // TODO: actually implement mod groups.
+                let search_string = &mut self.search_string;
                 let lower = search_string.to_lowercase();
                 let any_matches = self.state.mod_data.any_mod(&profile, |mc, _| {
                     self.state
@@ -1658,7 +2322,7 @@ impl eframe::App for App {
                         .unwrap_or(false)
                 });
 
-                let mut text_edit = egui::TextEdit::singleline(search_string);
+                let mut text_edit = egui::TextEdit::singleline(search_string).hint_text("Search");
                 if !any_matches {
                     text_edit = text_edit.text_color(ui.visuals().error_fg_color);
                 }
@@ -1668,14 +2332,24 @@ impl eframe::App for App {
                 if res.changed() {
                     self.scroll_to_match = true;
                 }
-                if res.lost_focus() {
-                    self.search_string = None;
+                if res.lost_focus()
+                    && ui.input(|i| {
+                        i.key_pressed(egui::Key::Enter) || i.key_pressed(egui::Key::Escape)
+                    })
+                {
+                    *search_string = String::new();
                     self.scroll_to_match = false;
-                } else if !res.has_focus() {
+                } else if self.focus_search {
                     res.request_focus();
+                    self.focus_search = false;
                 }
-            }
+            });
+            ui.add_space(4.);
 
+            self.ui_profile(ui, &profile);
+
+            // must access memory outside of input lock to prevent deadlock
+            let is_anything_focused = ctx.memory(|m| m.focus().is_some());
             ctx.input(|i| {
                 if !i.raw.dropped_files.is_empty()
                     && self.integrate_rid.is_none()
@@ -1701,16 +2375,22 @@ impl eframe::App for App {
                             if self.integrate_rid.is_none()
                                 && self.update_rid.is_none()
                                 && self.lint_rid.is_none()
-                                && ctx.memory(|m| m.focus().is_none())
+                                && !is_anything_focused
                             {
                                 self.resolve_mod = s.trim().to_string();
                                 message::ResolveMods::send(self, ctx, self.parse_mods(), false);
                             }
                         }
                         egui::Event::Text(text) => {
-                            if ctx.memory(|m| m.focus().is_none()) {
-                                self.search_string = Some(text.to_string());
+                            if !is_anything_focused {
+                                self.search_string = text.to_string();
                                 self.scroll_to_match = true;
+                                self.focus_search = true;
+                            }
+                        }
+                        egui::Event::Key { key, modifiers, pressed, .. } => {
+                            if key == &egui::Key::Q && *pressed && modifiers.ctrl {
+                                std::process::exit(0);
                             }
                         }
                         _ => {}
@@ -1790,4 +2470,11 @@ impl From<FetchProgress> for SpecFetchProgress {
             FetchProgress::Complete { .. } => Self::Complete,
         }
     }
+}
+
+#[derive(Debug, PartialEq)]
+pub enum SelfUpdateProgress {
+    Pending,
+    Progress { progress: u64, size: u64 },
+    Complete,
 }

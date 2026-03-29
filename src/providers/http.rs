@@ -1,4 +1,5 @@
 use std::path::PathBuf;
+use std::sync::OnceLock;
 use std::{collections::HashMap, sync::Arc};
 
 use anyhow::{bail, Result};
@@ -16,7 +17,7 @@ inventory::submit! {
         id: "http",
         new: HttpProvider::new_provider,
         can_provide: |url| -> bool {
-            RE_MOD
+            re_mod()
                 .captures(url)
                 .and_then(|c| c.name("hostname"))
                 .map_or(false, |h| {
@@ -60,8 +61,9 @@ impl HttpProvider {
     }
 }
 
-lazy_static::lazy_static! {
-    static ref RE_MOD: regex::Regex = regex::Regex::new(r"^https?://(?P<hostname>[^/]+)(/|$)").unwrap();
+static RE_MOD: OnceLock<regex::Regex> = OnceLock::new();
+fn re_mod() -> &'static regex::Regex {
+    RE_MOD.get_or_init(|| regex::Regex::new(r"^https?://(?P<hostname>[^/]+)(/|$)").unwrap())
 }
 
 const HTTP_PROVIDER_ID: &str = "http";
@@ -73,7 +75,6 @@ impl ModProvider for HttpProvider {
         spec: &ModSpecification,
         _update: bool,
         _cache: ProviderCache,
-        _blob_cache: &BlobCache,
     ) -> Result<ModResponse> {
         let url = url::Url::parse(&spec.url)?;
         let name = url
@@ -176,6 +177,11 @@ impl ModProvider for HttpProvider {
             },
         )
     }
+
+    async fn update_cache(&self, _cache: ProviderCache) -> Result<()> {
+        Ok(())
+    }
+
     async fn check(&self) -> Result<()> {
         Ok(())
     }
