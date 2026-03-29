@@ -16,6 +16,7 @@ use crate::{
     providers::{ModSpecification, ModStore},
     Dirs,
 };
+use crate::{gui::SortBy};
 
 use self::config::ConfigWrapper;
 
@@ -331,6 +332,22 @@ pub struct Config {
     pub provider_parameters: HashMap<String, HashMap<String, String>>,
     pub drg_pak_path: Option<PathBuf>,
     pub gui_theme: Option<GuiTheme>,
+    pub sorting_config: Option<SortingConfig>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct SortingConfig {
+    pub sort_category: SortBy,
+    pub is_ascending: bool,
+}
+
+impl Default for SortingConfig {
+    fn default() -> Self {
+        Self {
+            sort_category: SortBy::Enabled,
+            is_ascending: true,
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -389,6 +406,7 @@ impl Default for Config!["0.0.0"] {
                 .as_ref()
                 .map(DRGInstallation::main_pak),
             gui_theme: None,
+            sorting_config: Some(SortingConfig::default()),
         }
     }
 }
@@ -440,6 +458,7 @@ fn read_config_or_default(config_path: &PathBuf) -> Result<VersionAnnotatedConfi
                         provider_parameters: legacy.provider_parameters,
                         drg_pak_path: legacy.drg_pak_path,
                         gui_theme: None,
+                        sorting_config: Some(SortingConfig::default()),
                     })
                 }
             }
