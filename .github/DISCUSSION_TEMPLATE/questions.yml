@@ -1,0 +1,17 @@
+labels:
+  - "discussion"
+  - "question"
+
+body:
+  - type: markdown
+    attributes:
+      value: |2
+        - Read [Support Resources](https://github.com/Strappazzon/drg-mint-notag/blob/-/SUPPORT.md) before asking a question.
+        - Make sure to adhere to the [Code of Conduct](https://github.com/Strappazzon/.github/blob/-/CODE_OF_CONDUCT.md) before creating a discussion.
+
+  - type: textarea
+    attributes:
+      label: Question
+      description: Ask your question.
+    validations:
+      required: true
