@@ -125,6 +125,7 @@ impl SortBy {
 const FOLDER_LOGO_PNG: &[u8] = include_bytes!("../../assets/folder.png");
 const HTTP_LOGO_PNG: &[u8] = include_bytes!("../../assets/globe.png");
 const MODIO_LOGO_PNG: &[u8] = include_bytes!("../../assets/modio-cog-blue.png");
+const HEADER_PNG: &[u8] = include_bytes!("../../assets/header.png");
 
 pub struct App {
     default_visuals: Visuals,
@@ -144,9 +145,11 @@ pub struct App {
     scroll_to_match: bool,
     focus_search: bool,
     settings_window: Option<WindowSettings>,
+    about_window: Option<WindowAbout>,
     folder_texture_handle: Option<egui::TextureHandle>,
     http_texture_handle: Option<egui::TextureHandle>,
     modio_texture_handle: Option<egui::TextureHandle>,
+    header_texture_handle: Option<egui::TextureHandle>,
     last_action_status: LastActionStatus,
     available_update: Option<GitHubRelease>,
     show_update_time: Option<SystemTime>,
@@ -214,9 +217,11 @@ impl App {
             scroll_to_match: false,
             focus_search: false,
             settings_window: None,
+            about_window: None,
             folder_texture_handle: None,
             http_texture_handle: None,
             modio_texture_handle: None,
+            header_texture_handle: None,
             last_action_status: LastActionStatus::Idle,
             available_update: None,
             show_update_time: None,
@@ -1616,6 +1621,68 @@ impl App {
         }
     }
 
+    fn show_about(&mut self, ctx: &egui::Context) {
+        if let Some(_) = self.about_window {
+            let mut open = true;
+
+            egui::Window::new("About")
+                .open(&mut open)
+                .resizable(false)
+                .show(ctx, |ui| {
+                    ui.add_space(10.);
+                    ui.vertical_centered(|ui| {
+                        let texture: &egui::TextureHandle =
+                            self.header_texture_handle.get_or_insert_with(|| {
+                                let image = image::load_from_memory(HEADER_PNG).unwrap();
+                                let size = [image.width() as _, image.height() as _];
+                                let image_buffer = image.to_rgba8();
+                                let pixels = image_buffer.as_flat_samples();
+                                let color_image = egui::ColorImage::from_rgba_unmultiplied(
+                                    size,
+                                    pixels.as_slice(),
+                                );
+
+                                ui.ctx().load_texture("header", color_image, Default::default())
+                            });
+
+                        ui.add(egui::Image::new(texture));
+                    });
+                    ui.add_space(10.);
+
+                    ui.label("Third-party mod integration tool for Deep Rock Galactic.");
+                    ui.horizontal(|ui| {
+                        ui.spacing_mut().item_spacing.x = 0.0;
+                        ui.label("For more information about this fork, see the ");
+                        ui.hyperlink_to("README", "https://github.com/Strappazzon/drg-mint-notag/blob/master/.github/README.md");
+                        ui.label(".");
+                    });
+                    ui.add_space(10.);
+
+                    ui.hyperlink_to("Changelog", "https://github.com/Strappazzon/drg-mint-notag/blob/-/CHANGELOG.md");
+                    ui.hyperlink_to("License", "https://github.com/Strappazzon/drg-mint-notag/blob/-/LICENSE.txt");
+                    ui.hyperlink_to("GitHub", "https://github.com/Strappazzon/drg-mint-notag");
+                    ui.add_space(10.);
+
+                    ui.horizontal(|ui| {
+                        ui.spacing_mut().item_spacing.x = 0.0;
+                        ui.label("App icon \"Rock\" from ");
+                        ui.hyperlink_to("Icons8", "https://icons8.com/icon/6zZTdWRZoWil/rock");
+                        ui.label(".");
+                    });
+                    ui.add_space(10.);
+
+                    ui.with_layout(egui::Layout::right_to_left(Align::TOP), |ui| {
+                        if ui.button("Close").clicked() {
+                            self.about_window = None;
+                        }
+                    });
+                });
+            if !open {
+                self.about_window = None;
+            }
+        }
+    }
+
     fn show_detailed_mod_info(&mut self, ctx: &egui::Context, modio_id: u32) {
         let mut to_remove = Vec::new();
 
@@ -1856,6 +1923,8 @@ struct WindowLintReport;
 
 struct WindowLintsToggle;
 
+struct WindowAbout;
+
 struct WindowDetailedModInfo {
     info: ModInfo,
 }
@@ -1902,6 +1971,7 @@ impl eframe::App for App {
         self.show_update_window(ctx);
         self.show_provider_parameters(ctx);
         self.show_profile_windows(ctx);
+        self.show_about(ctx);
         self.show_settings(ctx);
         self.show_lints_toggle(ctx);
         self.show_lint_report(ctx);
@@ -2056,6 +2126,13 @@ impl eframe::App for App {
                     .clicked()
                 {
                     self.settings_window = Some(WindowSettings::new(&self.state));
+                }
+                if ui
+                    .button("\u{2139}")
+                    .on_hover_text("About the app")
+                    .clicked()
+                {
+                    self.about_window = Some(WindowAbout);
                 }
                 if let Some(available_update) = &self.available_update {
                     if ui
