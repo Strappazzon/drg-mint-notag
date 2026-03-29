@@ -24,7 +24,7 @@ fn re_mod() -> &'static regex::Regex {
     RE_MOD.get_or_init(|| regex::Regex::new("^https://mod\\.io/g/drg/m/(?P<name_id>[^/#]+)(?:#(?:(?P<mod_id>\\d+)(?:/(?P<modfile_id>\\d+))?|[a-z]+))?$").unwrap())
 }
 
-const MODIO_DRG_ID: u32 = 2475;
+pub(crate) const MODIO_DRG_ID: u32 = 2475;
 const MODIO_PROVIDER_ID: &str = "modio";
 
 inventory::submit! {
@@ -148,8 +148,8 @@ impl ModioFile {
 }
 
 #[derive(Default)]
-struct LoggingMiddleware {
-    requests: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+pub(crate) struct LoggingMiddleware {
+    pub(crate) requests: std::sync::Arc<std::sync::atomic::AtomicUsize>,
 }
 
 #[async_trait::async_trait]
