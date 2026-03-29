@@ -401,13 +401,13 @@ pub struct ModioTags {
     pub approval_status: ApprovalStatus,
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum RequiredStatus {
     RequiredByAll,
     Optional,
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum ApprovalStatus {
     Verified,
     Approved,
