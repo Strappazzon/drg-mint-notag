@@ -385,7 +385,7 @@ impl App {
             let mut ui_mod = |ctx: &mut Ctx,
                               ui: &mut Ui,
                               _group: Option<&str>,
-                              state: egui_dnd::ItemState,
+                              row_index: usize,
                               mc: &mut ModConfig| {
                 if !mc.enabled {
                     let vis = ui.visuals_mut();
@@ -433,7 +433,7 @@ impl App {
                 }
 
                 if let Some(info) = &info {
-                    egui::ComboBox::from_id_source(state.index)
+                    egui::ComboBox::from_id_source(row_index)
                         .selected_text(
                             self.state
                                 .store
@@ -471,7 +471,7 @@ impl App {
 
                     if mc.enabled {
                         let is_duplicate = enabled_specs.iter().any(|(i, spec)| {
-                            Some(state.index) != *i && info.spec.satisfies_dependency(spec)
+                            Some(row_index) != *i && info.spec.satisfies_dependency(spec)
                         });
                         if is_duplicate
                             && ui
@@ -482,7 +482,7 @@ impl App {
                                 .on_hover_text_at_pointer("Remove duplicate")
                                 .clicked()
                         {
-                            ctx.btn_remove = Some(state.index);
+                            ctx.btn_remove = Some(row_index);
                         }
 
                         let missing_deps = info
@@ -617,7 +617,7 @@ impl App {
             };
 
             let mut ui_item =
-                |ctx: &mut Ctx, ui: &mut Ui, mc: &mut ModOrGroup, state: egui_dnd::ItemState| {
+                |ctx: &mut Ctx, ui: &mut Ui, mc: &mut ModOrGroup, row_index: usize| {
                     ui.scope(|ui| {
                         ui.visuals_mut().widgets.hovered.weak_bg_fill = colors::DARK_RED;
                         ui.visuals_mut().widgets.active.weak_bg_fill = colors::DARKER_RED;
@@ -626,13 +626,13 @@ impl App {
                             .on_hover_text_at_pointer("Delete mod")
                             .clicked()
                         {
-                            ctx.btn_remove = Some(state.index);
+                            ctx.btn_remove = Some(row_index);
                         };
                     });
 
                     match mc {
                         ModOrGroup::Individual(mc) => {
-                            ui_mod(ctx, ui, None, state, mc);
+                            ui_mod(ctx, ui, None, row_index, mc);
                         }
                         ModOrGroup::Group {
                             ref group_name,
@@ -653,49 +653,28 @@ impl App {
                                     .iter_mut()
                                     .enumerate()
                                 {
-                                    ui.horizontal(|ui| {
-                                        ui_mod(
-                                            ctx,
-                                            ui,
-                                            Some(group_name),
-                                            egui_dnd::ItemState {
-                                                index,
-                                                dragged: false,
-                                            },
-                                            m,
-                                        )
-                                    });
+                                    ui.horizontal(|ui| ui_mod(ctx, ui, Some(group_name), index, m));
                                 }
                             });
                         }
                     }
                 };
 
-            let res = egui_dnd::dnd(ui, ui.id()).show(
-                profile.mods.iter_mut().enumerate(),
-                |ui, (_index, item), handle, state| {
+            profile
+                .mods
+                .iter_mut()
+                .enumerate()
+                .for_each(|(index, item)| {
                     let mut frame = egui::Frame::none();
-                    if state.dragged {
-                        frame.fill = ui.visuals().extreme_bg_color
-                    } else if state.index % 2 == 1 {
+                    if index % 2 == 1 {
                         frame.fill = ui.visuals().faint_bg_color
                     }
                     frame.show(ui, |ui| {
                         ui.horizontal(|ui| {
-                            handle.ui(ui, |ui| {
-                                ui.label("   \u{2630}  ");
-                            });
-
-                            ui_item(&mut ctx, ui, item, state);
+                            ui_item(&mut ctx, ui, item, index);
                         });
                     });
-                },
-            );
-
-            if res.final_update().is_some() {
-                res.update_vec(&mut profile.mods);
-                ctx.needs_save = true;
-            }
+                });
 
             if let Some(index) = self.pending_delete {
                 egui::Window::new("Delete Mod")
