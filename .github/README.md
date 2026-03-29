@@ -14,24 +14,25 @@
 
 ## About
 
-This is my fork of mint with the following changes from [upstream](https://github.com/trumank/mint/tree/832f7db9587e99ca1c74eb25902ff0ca7e0cb460):
+This a fork of mint with some modifications.
 
-- The `[MODDED]` prefix is omitted from public lobby name
-- Renamed program to `mint-notag` from `DRG Mod Integration` / `mint`
-  - Logs and config paths will still use the old name
-- Added a confirmation dialog before deleting a mod
-- Added a sort button
-  - This will sort mods by Enabled status, Provider, then by Name
-- Made search bar always visible
-- Added an [icon](../assets/icon.ico) to title bar, taskbar and executable
-- Changed main window size and position
-- Shortened approval labels
-- Improved messages and buttons description
-- Added <kbd>CTRL</kbd> + <kbd>Q</kbd> keyboard shortcut to quit the program
-- Improved update modal
-  - Added Download button that will open the latest release page
-  - Close button can be pressed immediately
-  - Fetch remote images in the release notes
+Changes or merges since [upstream/master @ 940e7aa](https://github.com/trumank/mint/tree/940e7aaf960dc4280fc0442a6c7f87afec440c0c):
+
+- Omitted the `[MODDED]` prefix from the public server name
+- Renamed program to `mint-notag` from `mint`
+- Confirmation dialog when deleting a mod
+- Sort button
+- Search bar always visible
+- App [icon](../assets/icon.ico) in the title bar, taskbar and Windows executable
+- Bigger window size
+- Centered main window at launch
+- Shorter [Approval labels](https://mod.io/g/drg/r/mod-guidelines-and-status-categories#heading-3)
+- <kbd>CTRL</kbd> + <kbd>Q</kbd> keyboard shortcut to quit the program
+- Support for mod.io new URL format
+
+Known issues:
+
+- Oodle compression is not available on Linux (upstream)
 
 For more information on mint usage see the [official User Guide](https://jieyouxu.github.io/drg-modding-docs/mint/getting-started.html).
 
@@ -43,8 +44,9 @@ For more information on mint usage see the [official User Guide](https://jieyoux
 
 The latest release is available on the [Releases page](https://github.com/Strappazzon/drg-mint-notag/releases/latest).
 
-> [!NOTE]
-> This fork is tested on Windows and the Steam version of the game.
+### Compatibility
+
+This fork is tested on Windows and the Steam version of the game.
 
 ### Linux Support
 
