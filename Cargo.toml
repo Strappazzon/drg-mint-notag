@@ -16,7 +16,7 @@ edition = "2021"
 anyhow = { version = "1.0.75", features = ["backtrace"] }
 patternsleuth = { git = "https://github.com/trumank/patternsleuth" }
 steamlocate = "2.0.0-alpha.0"
-repak = { git = "https://github.com/trumank/repak" }
+repak = { git = "https://github.com/trumank/repak", rev = "f8c345d37ed52056739a63801ee2cec84ce29a64" }
 
 [package]
 name = "mint"
