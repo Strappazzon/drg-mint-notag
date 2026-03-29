@@ -192,6 +192,8 @@ enum LastActionStatus {
 
 impl App {
     fn new(cc: &eframe::CreationContext, dirs: Dirs, args: Option<Vec<String>>) -> Result<Self> {
+        Self::set_custom_fonts(&cc.egui_ctx);
+
         let (tx, rx) = mpsc::channel(10);
         let state = State::init(dirs)?;
 
@@ -241,6 +243,31 @@ impl App {
             fetch_mod_details_rid: HashMap::default(),
             mod_details_thumbnail_texture_handle: HashMap::default(),
         })
+    }
+
+    fn set_custom_fonts(ctx: &egui::Context) {
+        let mut fonts = egui::FontDefinitions::default();
+
+        fonts.font_data.insert(
+            "my_font".to_owned(),
+            egui::FontData::from_static(include_bytes!(
+                "../../assets/NotoSansSC-Light.ttf"
+            )),
+        );
+
+        fonts
+            .families
+            .entry(egui::FontFamily::Proportional)
+            .or_default()
+            .insert(0, "my_font".to_owned());
+
+        fonts
+            .families
+            .entry(egui::FontFamily::Monospace)
+            .or_default()
+            .insert(0, "my_font".to_owned());
+
+        ctx.set_fonts(fonts);
     }
 
     fn ui_profile(&mut self, ui: &mut Ui, profile: &str) {
@@ -2157,7 +2184,7 @@ impl eframe::App for App {
                     match &self.last_action_status {
                         LastActionStatus::Success(msg) => {
                             ui.label(
-                                egui::RichText::new("STATUS")
+                                egui::RichText::new(" STATUS ")
                                     .color(Color32::BLACK)
                                     .background_color(Color32::LIGHT_GREEN),
                             );
@@ -2165,7 +2192,7 @@ impl eframe::App for App {
                         }
                         LastActionStatus::Failure(msg) => {
                             ui.label(
-                                egui::RichText::new("STATUS")
+                                egui::RichText::new(" STATUS ")
                                     .color(Color32::BLACK)
                                     .background_color(Color32::LIGHT_RED),
                             );
@@ -2251,6 +2278,7 @@ impl eframe::App for App {
                     }
                 });
             });
+            ui.add_space(6.);
 
             let profile = self.state.mod_data.active_profile.clone();
 
