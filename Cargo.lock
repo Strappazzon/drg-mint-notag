@@ -2098,7 +2098,7 @@ dependencies = [
 
 [[package]]
 name = "hook"
-version = "0.2.10"
+version = "0.2.16"
 dependencies = [
  "anyhow",
  "hook_resolvers",
@@ -2110,7 +2110,7 @@ dependencies = [
 
 [[package]]
 name = "hook_resolvers"
-version = "0.2.10"
+version = "0.2.16"
 dependencies = [
  "patternsleuth",
 ]
@@ -2616,7 +2616,7 @@ dependencies = [
 
 [[package]]
 name = "mint"
-version = "0.2.10"
+version = "0.2.16"
 dependencies = [
  "ansi_term",
  "anyhow",
@@ -2669,7 +2669,7 @@ dependencies = [
 
 [[package]]
 name = "mint_lib"
-version = "0.2.10"
+version = "0.2.16"
 dependencies = [
  "anyhow",
  "repak",
