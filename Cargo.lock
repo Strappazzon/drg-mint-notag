@@ -160,7 +160,7 @@ dependencies = [
  "ndk-context",
  "ndk-sys",
  "num_enum 0.7.6",
- "thiserror 1.0.69",
+ "thiserror",
 ]
 
 [[package]]
@@ -261,7 +261,7 @@ dependencies = [
  "objc-foundation",
  "objc_id",
  "parking_lot",
- "thiserror 1.0.69",
+ "thiserror",
  "winapi",
  "x11rb 0.12.0",
 ]
@@ -704,20 +704,21 @@ dependencies = [
  "polling 3.11.0",
  "rustix 0.38.44",
  "slab",
- "thiserror 1.0.69",
+ "thiserror",
 ]
 
 [[package]]
 name = "calloop"
-version = "0.14.4"
+version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4dbf9978365bac10f54d1d4b04f7ce4427e51f71d61f2fe15e3fed5166474df7"
+checksum = "b99da2f8558ca23c71f4fd15dc57c906239752dd27ff3c00a1d56b685b7cbfec"
 dependencies = [
  "bitflags 2.4.1",
+ "log",
  "polling 3.11.0",
- "rustix 1.1.4",
+ "rustix 0.38.44",
  "slab",
- "tracing",
+ "thiserror",
 ]
 
 [[package]]
@@ -734,12 +735,12 @@ dependencies = [
 
 [[package]]
 name = "calloop-wayland-source"
-version = "0.4.1"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "138efcf0940a02ebf0cc8d1eff41a1682a46b431630f4c52450d6265876021fa"
+checksum = "95a66a987056935f7efce4ab5668920b5d0dac4a7c99991a67395f13702ddd20"
 dependencies = [
- "calloop 0.14.4",
- "rustix 1.1.4",
+ "calloop 0.13.0",
+ "rustix 0.38.44",
  "wayland-backend",
  "wayland-client",
 ]
@@ -1238,7 +1239,7 @@ dependencies = [
  "console",
  "shell-words",
  "tempfile",
- "thiserror 1.0.69",
+ "thiserror",
  "zeroize",
 ]
 
@@ -1402,7 +1403,7 @@ dependencies = [
  "percent-encoding",
  "raw-window-handle 0.5.2",
  "static_assertions",
- "thiserror 1.0.69",
+ "thiserror",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
@@ -2550,7 +2551,7 @@ dependencies = [
  "combine",
  "jni-sys",
  "log",
- "thiserror 1.0.69",
+ "thiserror",
  "walkdir",
  "windows-sys 0.45.0",
 ]
@@ -2596,7 +2597,7 @@ checksum = "7d990301996c856ea07a84bc291e76f1273db52683663efc05c8d355976897e5"
 dependencies = [
  "pest",
  "pest_derive",
- "thiserror 1.0.69",
+ "thiserror",
 ]
 
 [[package]]
@@ -2610,7 +2611,7 @@ dependencies = [
  "paste",
  "regex",
  "serde",
- "thiserror 1.0.69",
+ "thiserror",
 ]
 
 [[package]]
@@ -2853,11 +2854,12 @@ dependencies = [
  "serde_json",
  "sha2",
  "simple-easing",
+ "smithay-clipboard",
  "steamlocate",
  "strum 0.26.2",
  "task-local-extensions",
  "tempfile",
- "thiserror 1.0.69",
+ "thiserror",
  "tokio",
  "tracing",
  "tracing-appender",
@@ -2971,7 +2973,7 @@ dependencies = [
  "num_enum 0.7.6",
  "raw-window-handle 0.5.2",
  "raw-window-handle 0.6.2",
- "thiserror 1.0.69",
+ "thiserror",
 ]
 
 [[package]]
@@ -3457,7 +3459,7 @@ version = "2.7.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1acb4a4365a13f749a93f1a094a7805e5cfa0955373a9de860d962eaa3a5fe5a"
 dependencies = [
- "thiserror 1.0.69",
+ "thiserror",
  "ucd-trie",
 ]
 
@@ -3817,7 +3819,7 @@ checksum = "b033d837a7cf162d7993aded9304e30a83213c648b6e389db233191f891e5c2b"
 dependencies = [
  "getrandom",
  "redox_syscall 0.2.16",
- "thiserror 1.0.69",
+ "thiserror",
 ]
 
 [[package]]
@@ -3893,7 +3895,7 @@ dependencies = [
  "oodle_loader",
  "sha1",
  "strum 0.24.1",
- "thiserror 1.0.69",
+ "thiserror",
  "zstd",
 ]
 
@@ -3953,7 +3955,7 @@ dependencies = [
  "reqwest",
  "serde",
  "task-local-extensions",
- "thiserror 1.0.69",
+ "thiserror",
 ]
 
 [[package]]
@@ -4481,7 +4483,7 @@ dependencies = [
  "log",
  "memmap2",
  "rustix 0.38.44",
- "thiserror 1.0.69",
+ "thiserror",
  "wayland-backend",
  "wayland-client",
  "wayland-csd-frame",
@@ -4494,26 +4496,24 @@ dependencies = [
 
 [[package]]
 name = "smithay-client-toolkit"
-version = "0.20.0"
+version = "0.19.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0512da38f5e2b31201a93524adb8d3136276fa4fe4aafab4e1f727a82b534cc0"
+checksum = "3457dea1f0eb631b4034d61d4d8c32074caa6cd1ab2d59f2327bd8461e2c0016"
 dependencies = [
  "bitflags 2.4.1",
- "calloop 0.14.4",
- "calloop-wayland-source 0.4.1",
+ "calloop 0.13.0",
+ "calloop-wayland-source 0.3.0",
  "cursor-icon",
  "libc",
  "log",
  "memmap2",
- "rustix 1.1.4",
- "thiserror 2.0.18",
+ "rustix 0.38.44",
+ "thiserror",
  "wayland-backend",
  "wayland-client",
  "wayland-csd-frame",
  "wayland-cursor",
  "wayland-protocols 0.32.11",
- "wayland-protocols-experimental",
- "wayland-protocols-misc",
  "wayland-protocols-wlr 0.3.11",
  "wayland-scanner",
  "xkeysym",
@@ -4521,12 +4521,12 @@ dependencies = [
 
 [[package]]
 name = "smithay-clipboard"
-version = "0.7.3"
+version = "0.7.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "71704c03f739f7745053bde45fa203a46c58d25bc5c4efba1d9a60e9dba81226"
+checksum = "cc8216eec463674a0e90f29e0ae41a4db573ec5b56b1c6c1c71615d249b6d846"
 dependencies = [
  "libc",
- "smithay-client-toolkit 0.20.0",
+ "smithay-client-toolkit 0.19.2",
  "wayland-backend",
 ]
 
@@ -4798,16 +4798,7 @@ version = "1.0.69"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b6aaf5339b578ea85b50e080feb250a3e8ae8cfcdff9a461c9ec2904bc923f52"
 dependencies = [
- "thiserror-impl 1.0.69",
-]
-
-[[package]]
-name = "thiserror"
-version = "2.0.18"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4288b5bcbc7920c07a1149a35cf9590a2aa808e0bc1eafaade0b80947865fbc4"
-dependencies = [
- "thiserror-impl 2.0.18",
+ "thiserror-impl",
 ]
 
 [[package]]
@@ -4835,17 +4826,6 @@ name = "thiserror-impl"
 version = "1.0.69"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4fee6c4efc90059e10f81e6d42c60a18f76588c3d74cb83a0b242a2b6c7504c1"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.117",
-]
-
-[[package]]
-name = "thiserror-impl"
-version = "2.0.18"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ebc4ee7f67670e9b64d05fa4253e753e016c6c95ff35b89b7941d6b856dec1d5"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -5051,7 +5031,6 @@ version = "0.1.40"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c3523ab5a71916ccf420eebdf5521fcef02141234bbc0b8a49f2fdc4544364ef"
 dependencies = [
- "log",
  "pin-project-lite",
  "tracing-attributes",
  "tracing-core",
@@ -5064,7 +5043,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3566e8ce28cc0a3fe42519fc80e6b4c943cc4c8cef275620eb8dac2d3d4e06cf"
 dependencies = [
  "crossbeam-channel",
- "thiserror 1.0.69",
+ "thiserror",
  "time",
  "tracing-subscriber",
 ]
@@ -5274,7 +5253,7 @@ dependencies = [
  "ordered-float",
  "rustc-hash",
  "slab",
- "thiserror 1.0.69",
+ "thiserror",
  "unreal_asset_proc_macro",
  "unreal_helpers",
 ]
@@ -5358,7 +5337,7 @@ dependencies = [
  "byteorder",
  "lazy_static",
  "regex",
- "thiserror 1.0.69",
+ "thiserror",
 ]
 
 [[package]]
@@ -5599,32 +5578,6 @@ dependencies = [
  "bitflags 2.4.1",
  "wayland-backend",
  "wayland-client",
- "wayland-scanner",
-]
-
-[[package]]
-name = "wayland-protocols-experimental"
-version = "20250721.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "40a1f863128dcaaec790d7b4b396cc9b9a7a079e878e18c47e6c2d2c5a8dcbb1"
-dependencies = [
- "bitflags 2.4.1",
- "wayland-backend",
- "wayland-client",
- "wayland-protocols 0.32.11",
- "wayland-scanner",
-]
-
-[[package]]
-name = "wayland-protocols-misc"
-version = "0.3.11"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "429b99200febaf95d4f4e46deff6fe4382bcff3280ee16a41cf887b3c3364984"
-dependencies = [
- "bitflags 2.4.1",
- "wayland-backend",
- "wayland-client",
- "wayland-protocols 0.32.11",
  "wayland-scanner",
 ]
 
@@ -6368,7 +6321,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2ba5aa1827d6b1a35a29b3413ec69ce5f796e4d897e3e5b38f461bef41d225ea"
 dependencies = [
  "ed25519-dalek",
- "thiserror 1.0.69",
+ "thiserror",
 ]
 
 [[package]]

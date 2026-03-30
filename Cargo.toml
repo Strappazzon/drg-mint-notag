@@ -39,6 +39,7 @@ winresource = "=0.1.19"
 [dev-dependencies]
 mockall = "0.11.4"
 simple-easing = "=1.0.1"
+smithay-clipboard = "=0.7.2"
 unicode-segmentation = "=1.7.1"
 
 [dependencies]
