@@ -15,6 +15,7 @@ use tokio::{
 };
 use tracing::{debug, error, info};
 
+use crate::gui::LastAction;
 use crate::integrate::{IntegrationErr, IntegrationErrKind};
 use crate::mod_lints::{LintId, LintReport};
 use crate::state::{ModData_v0_1_0 as ModData, ModOrGroup};
@@ -27,7 +28,7 @@ use crate::{
 use super::SelfUpdateProgress;
 use super::{
     request_counter::{RequestCounter, RequestID},
-    App, GitHubRelease, LastActionStatus, SpecFetchProgress, WindowProviderParameters,
+    App, GitHubRelease, SpecFetchProgress, WindowProviderParameters,
 };
 
 #[derive(Debug)]
@@ -97,7 +98,7 @@ impl ResolveMods {
             .unwrap();
             ctx.request_repaint();
         });
-        app.last_action_status = LastActionStatus::Idle;
+        app.last_action = None;
         app.resolve_mod_rid = Some(MessageHandle {
             rid,
             handle,
@@ -158,19 +159,19 @@ impl ResolveMods {
                     }
                     app.resolve_mod.clear();
                     app.state.mod_data.save().unwrap();
-                    app.last_action_status =
-                        LastActionStatus::Success("Mods successfully resolved".to_string());
+                    app.last_action = Some(LastAction::success(
+                        "Mods successfully resolved".to_string(),
+                    ));
                 }
                 Err(e) => match e.downcast::<IntegrationError>() {
                     Ok(IntegrationError::NoProvider { url: _, factory }) => {
                         app.window_provider_parameters =
                             Some(WindowProviderParameters::new(factory, &app.state));
-                        app.last_action_status =
-                            LastActionStatus::Failure("no provider".to_string());
+                        app.last_action = Some(LastAction::failure("No provider".to_string()));
                     }
                     Err(e) => {
                         error!("{:#?}\n{}", e, e.backtrace());
-                        app.last_action_status = LastActionStatus::Failure(e.to_string());
+                        app.last_action = Some(LastAction::failure(e.to_string()));
                     }
                 },
             }
@@ -212,23 +213,21 @@ impl Integrate {
             match self.result {
                 Ok(()) => {
                     info!("integration complete");
-                    app.last_action_status =
-                        LastActionStatus::Success("DLL hook and mod bundle installed".to_string());
+                    app.last_action = Some(LastAction::success("DLL hook and mod bundle installed".to_string()));
                 }
                 Err(IntegrationErr { mod_ctxt, kind }) => match kind {
                     IntegrationErrKind::Generic(e) => match e.downcast::<IntegrationError>() {
                         Ok(IntegrationError::NoProvider { url: _, factory }) => {
                             app.window_provider_parameters =
                                 Some(WindowProviderParameters::new(factory, &app.state));
-                            app.last_action_status =
-                                LastActionStatus::Failure("no provider".to_string());
+                            app.last_action = Some(LastAction::failure("No provider".to_string()));
                         }
                         Err(e) => {
                             match mod_ctxt {
                                         Some(mod_ctxt) => error!("error encountered during integration while working with mod `{:?}`\n{:#?}\n{}", mod_ctxt, e, e.backtrace()),
                                         None => error!("{:#?}\n{}", e, e.backtrace()),
                                     };
-                            app.last_action_status = LastActionStatus::Failure(e.to_string());
+                            app.last_action = Some(LastAction::failure(e.to_string()));
                         }
                     },
                     IntegrationErrKind::Repak(e) => {
@@ -236,14 +235,14 @@ impl Integrate {
                                 Some(mod_ctxt) => error!("`repak` error encountered during integration while working with mod `{:?}`\n{:#?}", mod_ctxt, e),
                                 None => error!("`repak` error encountered during integration: {:#?}", e),
                             };
-                        app.last_action_status = LastActionStatus::Failure(e.to_string());
+                        app.last_action = Some(LastAction::failure(e.to_string()));
                     }
                     IntegrationErrKind::UnrealAsset(e) => {
                         match mod_ctxt {
                                 Some(mod_ctxt) => error!("`unreal_asset` error encountered during integration while working with mod `{:?}`\n{:#?}", mod_ctxt, e),
                                 None => error!("`unreal_asset` error encountered during integration: {:#?}", e),
                             };
-                        app.last_action_status = LastActionStatus::Failure(e.to_string());
+                        app.last_action = Some(LastAction::failure(e.to_string()));
                     }
                 },
             }
@@ -286,7 +285,7 @@ impl UpdateCache {
                 .await
                 .unwrap();
         });
-        app.last_action_status = LastActionStatus::Idle;
+        app.last_action = None;
         app.update_rid = Some(MessageHandle {
             rid,
             handle,
@@ -299,20 +298,20 @@ impl UpdateCache {
             match self.result {
                 Ok(()) => {
                     info!("cache update complete");
-                    app.last_action_status =
-                        LastActionStatus::Success("Cache updated".to_string());
+                    app.last_action = Some(LastAction::success(
+                        "Cache updated".to_string(),
+                    ));
                 }
                 Err(e) => match e.downcast::<IntegrationError>() {
                     // TODO make provider initializing more generic
                     Ok(IntegrationError::NoProvider { url: _, factory }) => {
                         app.window_provider_parameters =
                             Some(WindowProviderParameters::new(factory, &app.state));
-                        app.last_action_status =
-                            LastActionStatus::Failure("no provider".to_string());
+                        app.last_action = Some(LastAction::failure("No provider".to_string()));
                     }
                     Err(e) => {
                         error!("{:#?}\n{}", e, e.backtrace());
-                        app.last_action_status = LastActionStatus::Failure(e.to_string());
+                        app.last_action = Some(LastAction::failure(e.to_string()));
                     }
                 },
             }
@@ -507,19 +506,18 @@ impl LintMods {
                 Ok(report) => {
                     info!("lint mod report complete");
                     app.lint_report = Some(report);
-                    app.last_action_status =
-                        LastActionStatus::Success("Mod lint report complete".to_string());
+                    app.last_action =
+                        Some(LastAction::success("Mod lint report complete".to_string()));
                 }
                 Err(e) => match e.downcast::<IntegrationError>() {
                     Ok(IntegrationError::NoProvider { url: _, factory }) => {
                         app.window_provider_parameters =
                             Some(WindowProviderParameters::new(factory, &app.state));
-                        app.last_action_status =
-                            LastActionStatus::Failure("no provider".to_string());
+                        app.last_action = Some(LastAction::failure("No provider".to_string()));
                     }
                     Err(e) => {
                         error!("{:#?}\n{}", e, e.backtrace());
-                        app.last_action_status = LastActionStatus::Failure(e.to_string());
+                        app.last_action = Some(LastAction::failure(e.to_string()));
                     }
                 },
             }
@@ -605,15 +603,13 @@ impl SelfUpdate {
                 Ok(original_exe_path) => {
                     info!("self update complete");
                     app.original_exe_path = Some(original_exe_path);
-                    app.last_action_status =
-                        LastActionStatus::Success("Self update complete".to_string());
+                    app.last_action = Some(LastAction::success("Self update complete".to_string()));
                 }
                 Err(e) => {
                     error!("self update failed");
                     error!("{:#?}", e);
                     app.self_update_rid = None;
-                    app.last_action_status =
-                        LastActionStatus::Failure("Self update failed".to_string());
+                    app.last_action = Some(LastAction::failure("Self update failed".to_string()));
                 }
             }
             app.integrate_rid = None;
@@ -804,15 +800,13 @@ impl FetchModDetails {
                 Ok(mod_details) => {
                     info!("fetch mod details successful");
                     app.mod_details.insert(mod_details.r#mod.id, mod_details);
-                    app.last_action_status =
-                        LastActionStatus::Success("Fetched mod details".to_string());
+                    app.last_action = Some(LastAction::success("Fetched mod details".to_string()));
                 }
                 Err(e) => {
                     error!("fetch mod details failed");
                     error!("{:#?}", e);
                     to_remove = Some(self.modio_id);
-                    app.last_action_status =
-                        LastActionStatus::Failure("Failed to fetch mod details".to_string());
+                    app.last_action = Some(LastAction::failure("Failed to fetch mod details".to_string()));
                 }
             }
         }

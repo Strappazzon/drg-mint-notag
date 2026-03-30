@@ -8,7 +8,7 @@ mod toggle_switch;
 
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet};
-use std::time::{SystemTime};
+use std::time::{Instant, SystemTime};
 use std::{
     collections::{HashMap, HashSet},
     ops::DerefMut,
@@ -150,7 +150,7 @@ pub struct App {
     http_texture_handle: Option<egui::TextureHandle>,
     modio_texture_handle: Option<egui::TextureHandle>,
     header_texture_handle: Option<egui::TextureHandle>,
-    last_action_status: LastActionStatus,
+    last_action: Option<LastAction>,
     available_update: Option<GitHubRelease>,
     show_update_time: Option<SystemTime>,
     open_profiles: HashSet<String>,
@@ -184,8 +184,40 @@ struct LintOptions {
     unmodified_game_assets: bool,
 }
 
+struct LastAction {
+    timestamp: Instant,
+    status: LastActionStatus,
+}
+
+impl LastAction {
+    fn success(msg: String) -> Self {
+        Self {
+            timestamp: Instant::now(),
+            status: LastActionStatus::Success(msg),
+        }
+    }
+
+    fn failure(msg: String) -> Self {
+        Self {
+            timestamp: Instant::now(),
+            status: LastActionStatus::Failure(msg),
+        }
+    }
+
+    fn timeago(&self) -> String {
+        let duration = Instant::now().duration_since(self.timestamp);
+        let seconds = duration.as_secs();
+        if seconds < 60 {
+            format!("{}s ago", seconds)
+        } else if seconds < 3600 {
+            format!("{}m ago", seconds / 60)
+        } else {
+            ">1h ago".into()
+        }
+    }
+}
+
 enum LastActionStatus {
-    Idle,
     Success(String),
     Failure(String),
 }
@@ -224,7 +256,7 @@ impl App {
             http_texture_handle: None,
             modio_texture_handle: None,
             header_texture_handle: None,
-            last_action_status: LastActionStatus::Idle,
+            last_action: None,
             available_update: None,
             show_update_time: None,
             open_profiles: Default::default(),
@@ -2063,7 +2095,7 @@ impl eframe::App for App {
                                 });
 
                             if button.clicked() {
-                                self.last_action_status = LastActionStatus::Idle;
+                                self.last_action = None;
                                 self.integrate_rid = Some(message::Integrate::send(
                                     &mut self.request_counter,
                                     self.state.store.clone(),
@@ -2084,7 +2116,7 @@ impl eframe::App for App {
                                     .on_disabled_hover_text("Game not found. Configure it in the settings menu.");
                             }
                             if button.clicked() {
-                                self.last_action_status = LastActionStatus::Idle;
+                                self.last_action = None;
                                 if let Some(pak_path) = &self.state.config.drg_pak_path {
                                     let mut mods = HashSet::default();
                                     let active_profile = self.state.mod_data.active_profile.clone();
@@ -2103,18 +2135,14 @@ impl eframe::App for App {
                                     );
 
                                     debug!("uninstalling mods: pak_path = {}", pak_path.display());
-                                    match uninstall(pak_path, mods) {
-                                        Ok(()) => {
-                                            self.last_action_status = LastActionStatus::Success(
-                                                "DLL hook and mods removed".to_string(),
-                                            );
-                                        }
-                                        Err(e) => {
-                                            self.last_action_status = LastActionStatus::Failure(
-                                                format!("Failed to uninstall mods: {e}"),
-                                            )
-                                        }
-                                    }
+                                    self.last_action = Some(match uninstall(pak_path, mods) {
+                                        Ok(()) => LastAction::success(
+                                            "DLL hook and mods removed".to_string(),
+                                        ),
+                                        Err(e) => LastAction::failure(format!(
+                                            "Failed to uninstall mods: {e}"
+                                        )),
+                                    })
                                 }
                             }
                         });
@@ -2181,24 +2209,28 @@ impl eframe::App for App {
                     }
                 }
                 ui.with_layout(egui::Layout::left_to_right(Align::TOP), |ui| {
-                    match &self.last_action_status {
-                        LastActionStatus::Success(msg) => {
-                            ui.label(
-                                egui::RichText::new(" STATUS ")
-                                    .color(Color32::BLACK)
-                                    .background_color(Color32::LIGHT_GREEN),
-                            );
-                            ui.label(msg);
-                        }
-                        LastActionStatus::Failure(msg) => {
-                            ui.label(
-                                egui::RichText::new(" STATUS ")
-                                    .color(Color32::BLACK)
-                                    .background_color(Color32::LIGHT_RED),
-                            );
-                            ui.label(msg);
-                        }
-                        _ => {}
+                    if let Some(last_action) = &self.last_action {
+                        let msg = match &last_action.status {
+                            LastActionStatus::Success(msg) => {
+                                ui.label(
+                                    egui::RichText::new(" STATUS ")
+                                        .color(Color32::BLACK)
+                                        .background_color(Color32::LIGHT_GREEN),
+                                );
+                                msg
+                            }
+                            LastActionStatus::Failure(msg) => {
+                                ui.label(
+                                    egui::RichText::new(" STATUS ")
+                                        .color(Color32::BLACK)
+                                        .background_color(Color32::LIGHT_RED),
+                                );
+                                msg
+                            }
+                        };
+
+                        ui.ctx().request_repaint(); // for continuously updating time
+                        ui.label(format!("({}): {}", last_action.timeago(), msg));
                     }
                 });
             });
@@ -2225,7 +2257,6 @@ impl eframe::App for App {
                     let mods = Self::build_mod_string(&mods);
                     ui.output_mut(|o| o.copied_text = mods);
                 }
-
                 // TODO find better icon, flesh out multiple-view usage, fix GUI locking
                 /*
                 if ui
