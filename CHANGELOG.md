@@ -4,6 +4,21 @@
 
 ## [Unreleased] - ReleaseDate
 
+## [0.2.16] - 2026-03-30
+
+- Added detailed mod info view
+  - Click the info button beside the mod name to see the its description, changelog and download the latest pak
+- Support displaying Chinese characters
+- Added more mod sorting options
+- Show time since last action
+- Added manual dark/light/auto color scheme toggle
+- Restored possibility to type anywhere on the mods list to search
+- Renamed config and cache directories from `drg-mod-integration` to `mint`
+  - Will default to legacy directories if they exist
+- Renamed release archive and executable
+- Implemented self update
+- pak bundle will be compressed
+
 ## [0.2.15] - 2026-03-18
 
 - Made search bar always visible
@@ -70,7 +85,8 @@
 - Fix including same asset paths with different casings causing Unreal Engine to load neither ([#29](https://github.com/trumank/drg-mod-integration/issues/29))
 
 <!-- next-url -->
-[Unreleased]: https://github.com/Strappazzon/drg-mint-notag/compare/v0.2.15...HEAD
+[Unreleased]: https://github.com/Strappazzon/drg-mint-notag/compare/v0.2.16...HEAD
+[0.2.16]: https://github.com/Strappazzon/drg-mint-notag/compare/v0.2.15...v0.2.16
 [0.2.15]: https://github.com/Strappazzon/drg-mint-notag/compare/v0.2.14...v0.2.15
 [0.2.14]: https://github.com/Strappazzon/drg-mint-notag/compare/v0.2.13...v0.2.14
 [0.2.13]: https://github.com/Strappazzon/drg-mint-notag/compare/v0.2.12...v0.2.13
