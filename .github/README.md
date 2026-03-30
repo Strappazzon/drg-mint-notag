@@ -46,7 +46,9 @@ The latest release is available on the [Releases page](https://github.com/Strapp
 
 ### Compatibility
 
-This fork is tested on Windows and the Steam version of the game.
+This fork is tested on Windows 11 and the Steam version of the game, but it *should* work on the Microsoft Store version of DRG as well.
+
+Running on macOS is *not* supported.
 
 ### Linux Support
 
@@ -70,6 +72,6 @@ If you are interested in contributing directly to this repository, please see:
 
 The code is open source under the terms of the [MIT License](../LICENSE.txt).
 
-App icon from [Icons8](https://icons8.com/icon/6zZTdWRZoWil/rock).
+App icon "Rock" from [Icons8](https://icons8.com/icon/6zZTdWRZoWil/rock).
 
 By contributing to this repository, you agree that the content you contribute may be provided under the terms of the [MIT License](../LICENSE.txt).

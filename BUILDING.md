@@ -1,11 +1,10 @@
 # Building mint-notag
 
-This guide should assist you in compiling and running mint-notag.
-
-> [!NOTE]
-> Instructions are for Windows as I don't have access to Linux.
+This guide should assist you in compiling and running mint-notag on both Windows and Linux.
 
 ## Requirements
+
+### Windows
 
 - Visual Studio with the following individual components:
   - MSVC v143 - VS 2022 C++ x64/x86 build tools (Latest)
@@ -30,7 +29,48 @@ After setting up all the requirements:
   rustup default nightly-2023-08-18
   ```
 
-## Building with cargo
+### Linux / WSL
+
+> [!NOTE]
+> This was tested on Debian so the packages and instructions may differ.
+
+- Build tools:
+
+  ```sh
+  $ sudo apt install build-essential pkg-config
+  # Cross compiler for x86_64-pc-windows-gnu
+  $ sudo apt install gcc-mingw-w64
+  # gtk3
+  $ sudo apt install libgtk-3-dev
+  ```
+
+- [rustup](https://rust-lang.org/tools/install/?platform_override=linux):
+
+  ```sh
+  # Remove previous Rust versions
+  $ sudo apt remove --purge rustc cargo
+  $ sudo apt autoremove --purge
+  # Install rustup
+  $ curl https://sh.rustup.rs -sSf | sh
+  ```
+
+After setting up all the requirements:
+
+- Add Rust to Path:
+
+  ```sh
+  source "$HOME/.cargo/env"
+  ```
+
+- Install [Rust toolchain](https://rust-lang.github.io/rustup/concepts/toolchains.html):
+
+  <!-- markdownlint-disable-next-line MD040 -->
+  ```
+  rustup install nightly-2023-08-18 --no-self-update
+  rustup default nightly-2023-08-18
+  ```
+
+## Compiling
 
 - Run `cargo build` to compile a development build
   - The output will be inside `target/debug`
