@@ -19,16 +19,22 @@ This a fork of mint with some modifications.
 Changes or merges since [upstream/master @ 940e7aa](https://github.com/trumank/mint/tree/940e7aaf960dc4280fc0442a6c7f87afec440c0c):
 
 - Omitted the `[MODDED]` prefix from the public server name
-- Renamed program to `mint-notag` from `mint`
+- Changed app title to `mint-notag` from `mint`
 - Confirmation dialog when deleting a mod
-- Sort button
+- Sorting options for mods
 - Search bar always visible
+- Time since last action
+- Detailed mod info view
+  - Click the info button beside the mod name to see the its description, changelog and download the latest pak
 - App [icon](../assets/icon.ico) in the title bar, taskbar and Windows executable
 - Bigger window size
 - Centered main window at launch
 - Shorter [Approval labels](https://mod.io/g/drg/r/mod-guidelines-and-status-categories#heading-3)
 - <kbd>CTRL</kbd> + <kbd>Q</kbd> keyboard shortcut to quit the program
 - Support for mod.io new URL format
+- pak bundle will be compressed
+- Renamed config and cache directories from `drg-mod-integration` to `mint`
+  - Will default to legacy directories if they exist
 
 Known issues:
 
@@ -38,7 +44,7 @@ For more information on mint usage see the [official User Guide](https://jieyoux
 
 ## Preview
 
-![mint-notag GUI](../assets/screenshot.png)
+![mint-notag GUI](../assets/screenshot.jpg)
 
 ## Download
 
