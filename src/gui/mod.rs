@@ -842,29 +842,35 @@ impl App {
             }
 
             if let Some(index) = self.pending_delete {
-                egui::Window::new("Delete Mod")
-                    .collapsible(false)
-                    .resizable(false)
-                    .show(ui.ctx(), |ui| {
-                        ui.add_space(10.);
-                        ui.label("Are you sure you want to delete this mod from the current profile? This cannot be undone.");
-                        ui.add_space(10.);
+                if self.state.config.confirm_deletion {
+                    egui::Window::new("Delete Mod")
+                        .collapsible(false)
+                        .resizable(false)
+                        .show(ui.ctx(), |ui| {
+                            ui.add_space(10.);
+                            ui.label("Are you sure you want to delete this mod from the current profile? This cannot be undone.");
+                            ui.add_space(10.);
 
-                        ui.with_layout(egui::Layout::right_to_left(Align::TOP), |ui| {
-                            if ui
-                                .add(egui::Button::new(RichText::new("Delete").color(Color32::WHITE)).fill(Color32::DARK_RED))
-                                .clicked()
-                            {
-                                profile.mods.remove(index);
-                                ctx.needs_save = true;
-                                self.pending_delete = None;
-                            }
+                            ui.with_layout(egui::Layout::right_to_left(Align::TOP), |ui| {
+                                if ui
+                                    .add(egui::Button::new(RichText::new("Delete").color(Color32::WHITE)).fill(Color32::DARK_RED))
+                                    .clicked()
+                                {
+                                    profile.mods.remove(index);
+                                    ctx.needs_save = true;
+                                    self.pending_delete = None;
+                                }
 
-                            if ui.button("Cancel").clicked() {
-                                self.pending_delete = None;
-                            }
+                                if ui.button("Cancel").clicked() {
+                                    self.pending_delete = None;
+                                }
+                            });
                         });
-                    });
+                } else {
+                    profile.mods.remove(index);
+                    ctx.needs_save = true;
+                    self.pending_delete = None;
+                }
             }
         };
 
@@ -969,7 +975,7 @@ impl App {
                         ui.with_layout(egui::Layout::right_to_left(Align::TOP), |ui| {
                             if ui
                                 .add(egui::Button::new("Install"))
-                                .on_hover_text("Download and install the update.")
+                                .on_hover_text("Download and install the update")
                                 .clicked()
                             {
                                 self.self_update_rid = Some(message::SelfUpdate::send(
@@ -1166,6 +1172,24 @@ impl App {
                         if ui.link(data_dir.display().to_string()).clicked() {
                             opener::open(data_dir).ok();
                         }
+                        ui.end_row();
+
+                        ui.add_space(1.);
+                        ui.end_row();
+
+                        ui.heading("App Behavior");
+                        ui.end_row();
+
+                        ui.label("Confirm delete:");
+                        ui.horizontal(|ui| {
+                            let config = &mut self.state.config;
+                            if ui
+                                .add(toggle_switch(&mut config.confirm_deletion))
+                                .changed()
+                            {
+                                config.save().unwrap();
+                            }
+                        });
                         ui.end_row();
 
                         ui.add_space(1.);

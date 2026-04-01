@@ -327,12 +327,15 @@ impl ModData!["0.1.0"] {
 
 #[obake::versioned]
 #[obake(version("0.0.0"))]
+#[obake(version("0.1.0"))]
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Config {
     pub provider_parameters: HashMap<String, HashMap<String, String>>,
     pub drg_pak_path: Option<PathBuf>,
     pub gui_theme: Option<GuiTheme>,
     pub sorting_config: Option<SortingConfig>,
+    #[serde(default = "default_true")]
+    pub confirm_deletion: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -355,6 +358,8 @@ impl Default for SortingConfig {
 pub enum VersionAnnotatedConfig {
     #[serde(rename = "0.0.0")]
     V0_0_0(Config!["0.0.0"]),
+    #[serde(rename = "0.1.0")]
+    V0_1_0(Config!["0.1.0"]),
     #[serde(other)]
     Unsupported,
 }
@@ -374,16 +379,17 @@ impl Default for MaybeVersionedConfig {
 
 impl Default for VersionAnnotatedConfig {
     fn default() -> Self {
-        VersionAnnotatedConfig::V0_0_0(Default::default())
+        VersionAnnotatedConfig::V0_1_0(Default::default())
     }
 }
 
 impl Deref for VersionAnnotatedConfig {
-    type Target = Config!["0.0.0"];
+    type Target = Config!["0.1.0"];
 
     fn deref(&self) -> &Self::Target {
         match self {
-            VersionAnnotatedConfig::V0_0_0(cfg) => cfg,
+            VersionAnnotatedConfig::V0_0_0(_) => unreachable!(),
+            VersionAnnotatedConfig::V0_1_0(cfg) => cfg,
             VersionAnnotatedConfig::Unsupported => unreachable!(),
         }
     }
@@ -392,7 +398,8 @@ impl Deref for VersionAnnotatedConfig {
 impl DerefMut for VersionAnnotatedConfig {
     fn deref_mut(&mut self) -> &mut Self::Target {
         match self {
-            VersionAnnotatedConfig::V0_0_0(cfg) => cfg,
+            VersionAnnotatedConfig::V0_0_0(_) => unreachable!(),
+            VersionAnnotatedConfig::V0_1_0(cfg) => cfg,
             VersionAnnotatedConfig::Unsupported => unreachable!(),
         }
     }
@@ -407,6 +414,33 @@ impl Default for Config!["0.0.0"] {
                 .map(DRGInstallation::main_pak),
             gui_theme: None,
             sorting_config: None,
+            confirm_deletion: true,
+        }
+    }
+}
+
+impl Default for Config!["0.1.0"] {
+    fn default() -> Self {
+        Self {
+            provider_parameters: Default::default(),
+            drg_pak_path: DRGInstallation::find()
+                .as_ref()
+                .map(DRGInstallation::main_pak),
+            gui_theme: None,
+            sorting_config: None,
+            confirm_deletion: true,
+        }
+    }
+}
+
+impl From<Config!["0.0.0"]> for Config!["0.1.0"] {
+    fn from(legacy: Config!["0.0.0"]) -> Self {
+        Self {
+            provider_parameters: legacy.provider_parameters,
+            drg_pak_path: legacy.drg_pak_path,
+            gui_theme: legacy.gui_theme,
+            sorting_config: legacy.sorting_config,
+            confirm_deletion: legacy.confirm_deletion,
         }
     }
 }
@@ -443,22 +477,24 @@ impl State {
     }
 }
 
-fn read_config_or_default(config_path: &PathBuf) -> Result<VersionAnnotatedConfig> {
+fn read_config_or_default(
+    config_path: &PathBuf
+) -> Result<VersionAnnotatedConfig> {
     Ok(match std::fs::read(config_path) {
         Ok(buf) => {
             let config = serde_json::from_slice::<MaybeVersionedConfig>(&buf)
                 .context("failed to deserialize user config into maybe versioned config")?;
             match config {
                 MaybeVersionedConfig::Versioned(v) => match v {
-                    VersionAnnotatedConfig::V0_0_0(v) => VersionAnnotatedConfig::V0_0_0(v),
+                    VersionAnnotatedConfig::V0_0_0(v) => VersionAnnotatedConfig::V0_1_0(v.into()),
+                    VersionAnnotatedConfig::V0_1_0(v) => VersionAnnotatedConfig::V0_1_0(v),
                     VersionAnnotatedConfig::Unsupported => bail!("unsupported config version"),
                 },
                 MaybeVersionedConfig::Legacy(legacy) => {
-                    VersionAnnotatedConfig::V0_0_0(Config_v0_0_0 {
+                    VersionAnnotatedConfig::V0_1_0(Config_v0_1_0 {
                         provider_parameters: legacy.provider_parameters,
                         drg_pak_path: legacy.drg_pak_path,
-                        gui_theme: None,
-                        sorting_config: None,
+                        ..Default::default()
                     })
                 }
             }
