@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     gui::GuiTheme,
-    providers::{ModSpecification, ModStore},
+    providers::{ModInfo, ModSpecification, ModStore},
     Dirs,
 };
 use crate::{gui::SortBy};
@@ -327,6 +327,67 @@ impl ModData!["0.1.0"] {
 
 #[obake::versioned]
 #[obake(version("0.0.0"))]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ModNotes {
+    pub notes: HashMap<String, String>,
+}
+
+impl ModNotes!["0.0.0"] {
+    pub fn get_note_key(info: &ModInfo) -> String {
+        if let Some(modio_id) = info.modio_id {
+            format!("modio:{}", modio_id)
+        } else {
+            info.spec.url.clone()
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(tag = "version")]
+pub enum VersionAnnotatedModNotes {
+    #[serde(rename = "0.0.0")]
+    V0_0_0(ModNotes!["0.0.0"]),
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum MaybeVersionedModNotes {
+    Versioned(VersionAnnotatedModNotes),
+    Legacy(ModNotes!["0.0.0"]),
+}
+
+impl Default for MaybeVersionedModNotes {
+    fn default() -> Self {
+        MaybeVersionedModNotes::Versioned(Default::default())
+    }
+}
+
+impl Default for VersionAnnotatedModNotes {
+    fn default() -> Self {
+        VersionAnnotatedModNotes::V0_0_0(Default::default())
+    }
+}
+
+impl Deref for VersionAnnotatedModNotes {
+    type Target = ModNotes!["0.0.0"];
+
+    fn deref(&self) -> &Self::Target {
+        match self {
+            VersionAnnotatedModNotes::V0_0_0(notes) => notes,
+        }
+    }
+}
+
+impl DerefMut for VersionAnnotatedModNotes {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        match self {
+            VersionAnnotatedModNotes::V0_0_0(notes) => notes,
+        }
+    }
+}
+
+#[obake::versioned]
+#[obake(version("0.0.0"))]
 #[obake(version("0.1.0"))]
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Config {
@@ -449,6 +510,7 @@ pub struct State {
     pub dirs: Dirs,
     pub config: ConfigWrapper<VersionAnnotatedConfig>,
     pub mod_data: ConfigWrapper<VersionAnnotatedModData>,
+    pub mod_notes: ConfigWrapper<VersionAnnotatedModNotes>,
     pub store: Arc<ModStore>,
 }
 
@@ -466,12 +528,18 @@ impl State {
         let mod_data = ConfigWrapper::<VersionAnnotatedModData>::new(mod_data_path, mod_data);
         mod_data.save().unwrap();
 
+        let mod_notes_path = dirs.config_dir.join("mod_notes.json");
+        let mod_notes = read_mod_notes_or_default(&mod_notes_path)?;
+        let mod_notes = ConfigWrapper::<VersionAnnotatedModNotes>::new(mod_notes_path, mod_notes);
+        mod_notes.save().unwrap();
+
         let store = ModStore::new(&dirs.cache_dir, &config.provider_parameters)?.into();
 
         Ok(Self {
             dirs,
             config,
             mod_data,
+            mod_notes,
             store,
         })
     }
@@ -538,6 +606,27 @@ fn read_mod_data_or_default(
     };
 
     Ok(mod_data)
+}
+
+fn read_mod_notes_or_default(
+    mod_notes_path: &PathBuf
+) -> Result<VersionAnnotatedModNotes> {
+    Ok(match std::fs::read(mod_notes_path) {
+        Ok(buf) => {
+            let notes = serde_json::from_slice::<MaybeVersionedModNotes>(&buf)
+                .context("failed to deserialize existing `mod_notes.json`")?;
+            match notes {
+                MaybeVersionedModNotes::Legacy(legacy) => {
+                    VersionAnnotatedModNotes::V0_0_0(legacy)
+                }
+                MaybeVersionedModNotes::Versioned(v) => v,
+            }
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            VersionAnnotatedModNotes::default()
+        }
+        Err(e) => Err(e).context("failed to read `mod_notes.json`")?,
+    })
 }
 
 #[cfg(test)]

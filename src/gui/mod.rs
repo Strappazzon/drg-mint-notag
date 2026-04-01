@@ -42,7 +42,7 @@ use crate::{
         ApprovalStatus, FetchProgress, ModInfo, ModSpecification, ModStore, ModioTags,
         ProviderFactory, RequiredStatus,
     },
-    state::{ModConfig, ModData_v0_1_0 as ModData, ModOrGroup, ModProfile, State},
+    state::{ModConfig, ModData_v0_1_0 as ModData, ModNotes_v0_0_0 as ModNotes, ModOrGroup, ModProfile, State},
 };
 use find_string::FindString;
 use message::MessageHandle;
@@ -146,6 +146,7 @@ pub struct App {
     focus_search: bool,
     settings_window: Option<WindowSettings>,
     about_window: Option<WindowAbout>,
+    notes_window: HashMap<String, WindowNotes>,
     folder_texture_handle: Option<egui::TextureHandle>,
     http_texture_handle: Option<egui::TextureHandle>,
     modio_texture_handle: Option<egui::TextureHandle>,
@@ -252,6 +253,7 @@ impl App {
             focus_search: false,
             settings_window: None,
             about_window: None,
+            notes_window: HashMap::default(),
             folder_texture_handle: None,
             http_texture_handle: None,
             modio_texture_handle: None,
@@ -586,6 +588,21 @@ impl App {
                             oauth_token,
                             modio_id
                         ));
+                    }
+
+                    if ui
+                        .button("\u{1F4DD}")
+                        .on_hover_text_at_pointer("Notes")
+                        .clicked()
+                    {
+                        let note_key = ModNotes::get_note_key(info);
+                        let current_note = self.state.mod_notes.notes.get(&note_key).cloned().unwrap_or_default();
+
+                        self.notes_window.insert(note_key.clone(), WindowNotes {
+                            mod_url: mc.spec.url.clone(),
+                            note_key,
+                            note_text: current_note,
+                        });
                     }
 
                     if mc.enabled {
@@ -1101,6 +1118,7 @@ impl App {
         if let Some(window) = &mut self.settings_window {
             let mut open = true;
             let mut try_save = false;
+
             egui::Window::new("Settings")
                 .open(&mut open)
                 .resizable(false)
@@ -1766,11 +1784,65 @@ impl App {
         }
     }
 
+    fn show_notes(&mut self, ctx: &egui::Context) {
+        let mut to_remove = Vec::new();
+
+        for (note_key, editor) in &mut self.notes_window {
+            let mut open = true;
+            let mod_spec = ModSpecification::new(editor.mod_url.clone());
+            let mod_name = self.state.store.get_mod_info(&mod_spec)
+                .map(|info| info.name.clone())
+                .unwrap_or_else(|| editor.mod_url.clone());
+
+            egui::Window::new(format!("Notes: {}", mod_name))
+                .open(&mut open)
+                .collapsible(true)
+                .default_height(300.)
+                .resizable(false)
+                .show(ctx, |ui| {
+                    let scroll_area_height = (ui.available_height() - 60.0).clamp(0.0, f32::INFINITY);
+
+                    ui.add_space(6.);
+                    egui::ScrollArea::vertical()
+                        .max_height(scroll_area_height)
+                        .show(ui, |ui| {
+                            ui.vertical_centered(|ui| {
+                                ui.add(
+                                    egui::TextEdit::multiline(&mut editor.note_text)
+                                        .cursor_at_end(false)
+                                        .desired_rows(10)
+                                        .desired_width(400.)
+                                );
+                            });
+                        });
+                    ui.add_space(6.);
+
+                    ui.with_layout(egui::Layout::right_to_left(Align::TOP), |ui| {
+                        if ui.button("Save").clicked() {
+                            if editor.note_text.is_empty() {
+                                self.state.mod_notes.notes.remove(&editor.note_key);
+                            } else {
+                                self.state.mod_notes.notes.insert(editor.note_key.clone(), editor.note_text.clone());
+                            }
+                            self.state.mod_notes.save().unwrap();
+                        }
+                    });
+                });
+
+            if !open {
+                to_remove.push(note_key.clone());
+            }
+        }
+
+        for key in to_remove {
+            self.notes_window.remove(&key);
+        }
+    }
+
     fn show_detailed_mod_info(&mut self, ctx: &egui::Context, modio_id: u32) {
         let mut to_remove = Vec::new();
 
-        if let Some(WindowDetailedModInfo { info }) = self.detailed_mod_info_windows.get(&modio_id)
-        {
+        if let Some(WindowDetailedModInfo { info }) = self.detailed_mod_info_windows.get(&modio_id) {
             let mut open = true;
 
             egui::Window::new(&info.name)
@@ -2008,6 +2080,12 @@ struct WindowLintsToggle;
 
 struct WindowAbout;
 
+struct WindowNotes {
+    mod_url: String,
+    note_key: String,
+    note_text: String,
+}
+
 struct WindowDetailedModInfo {
     info: ModInfo,
 }
@@ -2056,6 +2134,7 @@ impl eframe::App for App {
         self.show_profile_windows(ctx);
         self.show_about(ctx);
         self.show_settings(ctx);
+        self.show_notes(ctx);
         self.show_lints_toggle(ctx);
         self.show_lint_report(ctx);
 
