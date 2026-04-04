@@ -28,10 +28,16 @@ pub struct ModConfig {
 
     #[serde(default = "default_true")]
     pub enabled: bool,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub priority: i32,
 }
 
 fn default_true() -> bool {
     true
+}
+
+fn is_zero(value: &i32) -> bool {
+    *value == 0
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -42,6 +48,7 @@ pub struct ModGroup {
 #[obake::versioned]
 #[obake(version("0.0.0"))]
 #[obake(version("0.1.0"))]
+#[obake(version("0.2.0"))]
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ModProfile {
     #[obake(cfg("0.0.0"))]
@@ -49,6 +56,7 @@ pub struct ModProfile {
 
     /// A profile can contain ordered individual mods mixed with mod groups.
     #[obake(cfg("0.1.0"))]
+    #[obake(cfg("0.2.0"))]
     pub mods: Vec<ModOrGroup>,
 }
 
@@ -66,9 +74,18 @@ impl From<ModProfile!["0.0.0"]> for ModProfile!["0.1.0"] {
     }
 }
 
+impl From<ModProfile!["0.1.0"]> for ModProfile!["0.2.0"] {
+    fn from(legacy: ModProfile!["0.1.0"]) -> Self {
+        Self {
+            mods: legacy.mods,
+        }
+    }
+}
+
 #[obake::versioned]
 #[obake(version("0.0.0"))]
 #[obake(version("0.1.0"))]
+#[obake(version("0.2.0"))]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ModData {
     pub active_profile: String,
@@ -76,11 +93,15 @@ pub struct ModData {
     pub profiles: BTreeMap<String, ModProfile!["0.0.0"]>,
     #[obake(cfg("0.1.0"))]
     pub profiles: BTreeMap<String, ModProfile!["0.1.0"]>,
+    #[obake(cfg("0.2.0"))]
+    pub profiles: BTreeMap<String, ModProfile!["0.2.0"]>,
     #[obake(cfg("0.1.0"))]
+    pub groups: BTreeMap<String, ModGroup>,
+    #[obake(cfg("0.2.0"))]
     pub groups: BTreeMap<String, ModGroup>,
 }
 
-impl ModData!["0.1.0"] {
+impl ModData!["0.2.0"] {
     pub fn for_each_mod_predicate<
         F: FnMut(&ModConfig),
         G: FnMut(bool /* mod group enabled? */) -> bool,
@@ -251,6 +272,34 @@ impl From<ModData!["0.0.0"]> for ModData!["0.1.0"] {
     }
 }
 
+impl From<ModData!["0.1.0"]> for ModData!["0.2.0"] {
+    fn from(legacy: ModData!["0.1.0"]) -> Self {
+        Self {
+            active_profile: legacy.active_profile,
+            profiles: legacy
+                .profiles
+                .into_iter()
+                .map(|(name, profile)| (name, profile.into()))
+                .collect(),
+            groups: legacy.groups,
+        }
+    }
+}
+
+impl Default for ModData!["0.2.0"] {
+    fn default() -> Self {
+        Self {
+            active_profile: "default".to_string(),
+            profiles: [("default".to_string(), Default::default())]
+                .into_iter()
+                .collect(),
+            groups: [("default".to_string(), Default::default())]
+                .into_iter()
+                .collect(),
+        }
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "version")]
 pub enum VersionAnnotatedModData {
@@ -258,6 +307,8 @@ pub enum VersionAnnotatedModData {
     V0_0_0(ModData!["0.0.0"]),
     #[serde(rename = "0.1.0")]
     V0_1_0(ModData!["0.1.0"]),
+    #[serde(rename = "0.2.0")]
+    V0_2_0(ModData!["0.2.0"]),
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -286,17 +337,18 @@ impl Default for MaybeVersionedModData {
 
 impl Default for VersionAnnotatedModData {
     fn default() -> Self {
-        VersionAnnotatedModData::V0_1_0(Default::default())
+        VersionAnnotatedModData::V0_2_0(Default::default())
     }
 }
 
 impl Deref for VersionAnnotatedModData {
-    type Target = ModData!["0.1.0"];
+    type Target = ModData!["0.2.0"];
 
     fn deref(&self) -> &Self::Target {
         match self {
             VersionAnnotatedModData::V0_0_0(_) => unreachable!(),
-            VersionAnnotatedModData::V0_1_0(md) => md,
+            VersionAnnotatedModData::V0_1_0(_) => unreachable!(),
+            VersionAnnotatedModData::V0_2_0(md) => md,
         }
     }
 }
@@ -305,17 +357,18 @@ impl DerefMut for VersionAnnotatedModData {
     fn deref_mut(&mut self) -> &mut Self::Target {
         match self {
             VersionAnnotatedModData::V0_0_0(_) => unreachable!(),
-            VersionAnnotatedModData::V0_1_0(md) => md,
+            VersionAnnotatedModData::V0_1_0(_) => unreachable!(),
+            VersionAnnotatedModData::V0_2_0(md) => md,
         }
     }
 }
 
-impl ModData!["0.1.0"] {
-    pub fn get_active_profile(&self) -> &ModProfile!["0.1.0"] {
+impl ModData!["0.2.0"] {
+    pub fn get_active_profile(&self) -> &ModProfile!["0.2.0"] {
         &self.profiles[&self.active_profile]
     }
 
-    pub fn get_active_profile_mut(&mut self) -> &mut ModProfile!["0.1.0"] {
+    pub fn get_active_profile_mut(&mut self) -> &mut ModProfile!["0.2.0"] {
         self.profiles.get_mut(&self.active_profile).unwrap()
     }
 
@@ -601,7 +654,8 @@ fn read_mod_data_or_default(
         MaybeVersionedModData::Legacy(legacy) => VersionAnnotatedModData::V0_1_0(legacy.into()),
         MaybeVersionedModData::Versioned(v) => match v {
             VersionAnnotatedModData::V0_0_0(md) => VersionAnnotatedModData::V0_1_0(md.into()),
-            VersionAnnotatedModData::V0_1_0(md) => VersionAnnotatedModData::V0_1_0(md),
+            VersionAnnotatedModData::V0_1_0(md) => VersionAnnotatedModData::V0_2_0(md.into()),
+            VersionAnnotatedModData::V0_2_0(md) => VersionAnnotatedModData::V0_2_0(md),
         },
     };
 
@@ -693,18 +747,21 @@ mod mod_data_tests {
             spec: ModSpecification::new("a".to_string()),
             required: false,
             enabled: false,
+            priority: 50,
         };
 
         let mod_2 = ModConfig {
             spec: ModSpecification::new("b".to_string()),
             required: true,
             enabled: false,
+            priority: 50,
         };
 
         let mod_3 = ModConfig {
             spec: ModSpecification::new("c".to_string()),
             required: false,
             enabled: true,
+            priority: 50,
         };
 
         let mod_data = ModData {
@@ -744,18 +801,21 @@ mod mod_data_tests {
             spec: ModSpecification::new("a".to_string()),
             required: false,
             enabled: false,
+            priority: 50,
         };
 
         let mod_2 = ModConfig {
             spec: ModSpecification::new("b".to_string()),
             required: true,
             enabled: false,
+            priority: 50,
         };
 
         let mod_3 = ModConfig {
             spec: ModSpecification::new("c".to_string()),
             required: false,
             enabled: true,
+            priority: 50,
         };
 
         let mod_data = ModData {

@@ -18,7 +18,7 @@ use tracing::{debug, error, info};
 use crate::gui::LastAction;
 use crate::integrate::{IntegrationErr, IntegrationErrKind};
 use crate::mod_lints::{LintId, LintReport};
-use crate::state::{ModData_v0_1_0 as ModData, ModOrGroup};
+use crate::state::{ModData_v0_2_0 as ModData, ModOrGroup};
 use crate::{
     error::IntegrationError,
     providers::{FetchProgress, ModInfo, ModResolution, ModSpecification, ModStore},
@@ -153,6 +153,7 @@ impl ResolveMods {
                                     spec: info.spec.clone(),
                                     required: info.suggested_require,
                                     enabled: true,
+                                    priority: 0,
                                 }),
                             );
                         }

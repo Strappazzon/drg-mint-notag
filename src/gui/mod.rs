@@ -8,6 +8,7 @@ mod toggle_switch;
 
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet};
+use std::ops::RangeInclusive;
 use std::time::{Instant, SystemTime};
 use std::{
     collections::{HashMap, HashSet},
@@ -42,7 +43,7 @@ use crate::{
         ApprovalStatus, FetchProgress, ModInfo, ModSpecification, ModStore, ModioTags,
         ProviderFactory, RequiredStatus,
     },
-    state::{ModConfig, ModData_v0_1_0 as ModData, ModNotes_v0_0_0 as ModNotes, ModOrGroup, ModProfile, State},
+    state::{ModConfig, ModData_v0_2_0 as ModData, ModNotes_v0_0_0 as ModNotes, ModOrGroup, ModProfile, State},
 };
 use find_string::FindString;
 use message::MessageHandle;
@@ -105,6 +106,7 @@ impl GuiTheme {
 pub enum SortBy {
     Enabled,
     Name,
+    Priority,
     Provider,
     RequiredStatus,
     ApprovalCategory,
@@ -115,6 +117,7 @@ impl SortBy {
         match self {
             SortBy::Enabled => "Enabled",
             SortBy::Name => "Name",
+            SortBy::Priority => "Priority",
             SortBy::Provider => "Provider",
             SortBy::RequiredStatus => "RequiredByAll",
             SortBy::ApprovalCategory => "Approval",
@@ -563,6 +566,41 @@ impl App {
                                 );
                             }
                         });
+
+                    ui.scope(|ui| {
+                        ui.style_mut().spacing.interact_size.x = 30.;
+                        let dark = ui.visuals().dark_mode;
+                        match mc.priority.cmp(&0) {
+                            std::cmp::Ordering::Less => {
+                                ui.visuals_mut().override_text_color = Some(if dark {
+                                    Color32::LIGHT_RED
+                                } else {
+                                    Color32::DARK_RED
+                                });
+                            }
+                            std::cmp::Ordering::Greater => {
+                                ui.visuals_mut().override_text_color = Some(if dark {
+                                    Color32::LIGHT_GREEN
+                                } else {
+                                    Color32::DARK_GREEN
+                                });
+                            }
+                            _ => {}
+                        }
+                        ui.add(
+                            egui::DragValue::new(&mut mc.priority)
+                                .custom_formatter(|n, _| {
+                                    if n == 0. {
+                                        "-".to_string()
+                                    } else {
+                                        format!("{n}")
+                                    }
+                                })
+                                .speed(0.05)
+                                .clamp_range(RangeInclusive::new(-999, 999)),
+                        )
+                        .on_hover_text_at_pointer("Load Priority\nIn case of asset conflict, mods with higher priority take precedence.\nCan have duplicate values.",);
+                    });
 
                     if ui
                         .button("\u{1F4CB}")
@@ -2011,6 +2049,7 @@ fn sort_mods(
         let mut order = match config.sort_category {
             SortBy::Enabled => mc_b.enabled.cmp(&mc_a.enabled),
             SortBy::Name => name_order,
+            SortBy::Priority => mc_a.priority.cmp(&mc_b.priority),
             SortBy::Provider => provider_order,
             SortBy::RequiredStatus => required_order,
             SortBy::ApprovalCategory => approval_order,
@@ -2189,15 +2228,23 @@ impl eframe::App for App {
                                     .on_disabled_hover_text("Game not found. Configure it in the settings menu.");
                             }
 
-                            let mut mods = Vec::new();
-                            let active_profile = self.state.mod_data.active_profile.clone();
-                            self.state
-                                .mod_data
-                                .for_each_enabled_mod(&active_profile, |mc| {
-                                    mods.push(mc.spec.clone());
-                                });
-
                             if button.clicked() {
+                                let mut mod_configs = Vec::new();
+                                let mut mods = Vec::new();
+                                let active_profile = self.state.mod_data.active_profile.clone();
+
+                                self.state
+                                    .mod_data
+                                    .for_each_enabled_mod(&active_profile, |mc| {
+                                        mod_configs.push(mc.clone());
+                                    });
+
+                                mod_configs.sort_by_key(|k| -k.priority);
+
+                                for config in mod_configs {
+                                    mods.push(config.spec.clone());
+                                }
+
                                 self.last_action = None;
                                 self.integrate_rid = Some(message::Integrate::send(
                                     &mut self.request_counter,
