@@ -230,6 +230,10 @@ impl App {
     fn new(cc: &eframe::CreationContext, dirs: Dirs, args: Option<Vec<String>>) -> Result<Self> {
         Self::set_custom_fonts(&cc.egui_ctx);
 
+        cc.egui_ctx.style_mut(|style| {
+            style.interaction.selectable_labels = false;
+        });
+
         let (tx, rx) = mpsc::channel(10);
         let state = State::init(dirs)?;
 
@@ -976,7 +980,7 @@ impl App {
         if let (Some(update), Some(_)) =
             (self.available_update.as_ref(), self.show_update_time)
         {
-            egui::Area::new("available-update-overlay")
+            egui::Area::new("available-update-overlay".into())
                 .movable(false)
                 .fixed_pos(Pos2::ZERO)
                 .order(egui::Order::Background)
@@ -2530,7 +2534,7 @@ impl eframe::App for App {
             self.ui_profile(ui, &profile);
 
             // must access memory outside of input lock to prevent deadlock
-            let is_anything_focused = ctx.memory(|m| m.focus().is_some());
+            let is_anything_focused = ctx.memory(|m| m.focused().is_some());
             ctx.input(|i| {
                 if !i.raw.dropped_files.is_empty()
                     && self.integrate_rid.is_none()
