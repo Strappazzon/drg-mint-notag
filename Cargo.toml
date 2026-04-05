@@ -9,7 +9,7 @@ members = [
 repository = "https://github.com/Strappazzon/drg-mint-notag"
 authors = ["trumank", "jieyouxu", "Strappazzon"]
 license = "MIT"
-version = "0.2.16"
+version = "0.3.0"
 edition = "2021"
 
 [workspace.dependencies]
