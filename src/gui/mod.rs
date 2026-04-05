@@ -2428,6 +2428,7 @@ impl eframe::App for App {
                 "profile",
                 self.state.mod_data.deref_mut().deref_mut(),
                 Some(buttons),
+                self.state.config.confirm_deletion,
             ) {
                 self.state.mod_data.save().unwrap();
             }

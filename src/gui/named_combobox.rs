@@ -2,7 +2,8 @@ use std;
 
 use super::{colors, custom_popup_above_or_below_widget, is_committed};
 
-use eframe::egui;
+use eframe::egui::{self, RichText};
+use eframe::epaint::Color32;
 
 use crate::state::{ModData_v0_2_0 as ModData, ModProfile_v0_2_0 as ModProfile};
 
@@ -77,6 +78,7 @@ pub(crate) fn ui<E, N>(
     name: &str,
     entries: &mut N,
     additional_ui: Option<impl FnOnce(&mut egui::Ui, &mut N)>,
+    confirm_deletion: bool,
 ) -> bool
 where
     N: NamedEntries<E>,
@@ -85,7 +87,7 @@ where
     ui.push_id(name, |ui| {
         ui.horizontal(|ui| {
             mk_add(ui, name, entries, &mut modified);
-            mk_delete(ui, name, entries, &mut modified);
+            mk_delete(ui, name, entries, &mut modified, confirm_deletion);
             mk_rename(ui, name, entries, &mut modified);
 
             ui.with_layout(egui::Layout::right_to_left(egui::Align::TOP), |ui| {
@@ -104,7 +106,7 @@ where
     modified
 }
 
-fn mk_delete<E, N>(ui: &mut egui::Ui, name: &str, entries: &mut N, modified: &mut bool)
+fn mk_delete<E, N>(ui: &mut egui::Ui, name: &str, entries: &mut N, modified: &mut bool, confirm_deletion: bool)
 where
     N: NamedEntries<E>,
 {
@@ -112,13 +114,22 @@ where
         ui.scope(|ui| {
             ui.visuals_mut().widgets.hovered.weak_bg_fill = colors::DARK_RED;
             ui.visuals_mut().widgets.active.weak_bg_fill = colors::DARKER_RED;
-            if ui
+            let response = ui
                 .button("\u{1F5D1}")
-                .on_hover_text_at_pointer(format!("Delete {name}"))
-                .clicked()
-            {
-                entries.remove_selected();
-                *modified = true;
+                .on_hover_text_at_pointer(format!("Delete {name}"));
+
+            if response.clicked() {
+                if confirm_deletion {
+                    let popup_id = ui.make_persistent_id(format!("delete-{name}"));
+                    ui.memory_mut(|mem| mem.open_popup(popup_id));
+                } else {
+                    entries.remove_selected();
+                    *modified = true;
+                }
+            }
+
+            if confirm_deletion {
+                mk_delete_popup(entries, ui, name, response, modified)
             }
         });
     });
@@ -284,4 +295,44 @@ fn mk_name_popup<E, N>(
     .is_none();
 
     ui.data_mut(|data| data.insert_temp(data_id, popup));
+}
+
+fn mk_delete_popup<E, N>(
+    entries: &mut N,
+    ui: &egui::Ui,
+    name: &str,
+    response: egui::Response,
+    modified: &mut bool,
+) where
+    N: NamedEntries<E>,
+{
+    let popup_id = ui.make_persistent_id(format!("delete-{name}"));
+
+    custom_popup_above_or_below_widget(
+        ui,
+        popup_id,
+        &response,
+        egui::AboveOrBelow::Below,
+        |ui| {
+            ui.set_min_width(200.0);
+            ui.vertical(|ui| {
+                ui.label("Delete profile?");
+
+                ui.horizontal(|ui| {
+                    if ui.button("Cancel").clicked() {
+                        ui.memory_mut(|mem| mem.close_popup());
+                    }
+
+                    if ui
+                        .add(egui::Button::new(RichText::new("Delete").color(Color32::WHITE)).fill(colors::DARK_RED))
+                        .clicked()
+                    {
+                        entries.remove_selected();
+                        *modified = true;
+                        ui.memory_mut(|mem| mem.close_popup());
+                    }
+                });
+            });
+        },
+    );
 }
