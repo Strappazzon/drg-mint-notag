@@ -1842,21 +1842,16 @@ impl App {
                 .default_height(300.)
                 .resizable(false)
                 .show(ctx, |ui| {
-                    let scroll_area_height = (ui.available_height() - 60.0).clamp(0.0, f32::INFINITY);
+                    let char_count = editor.note_text.chars().count();
+                    let char_limit = 128;
 
                     ui.add_space(6.);
-                    egui::ScrollArea::vertical()
-                        .max_height(scroll_area_height)
-                        .show(ui, |ui| {
-                            ui.vertical_centered(|ui| {
-                                ui.add(
-                                    egui::TextEdit::multiline(&mut editor.note_text)
-                                        .cursor_at_end(false)
-                                        .desired_rows(10)
-                                        .desired_width(400.)
-                                );
-                            });
-                        });
+                    ui.add(
+                        egui::TextEdit::singleline(&mut editor.note_text)
+                            .cursor_at_end(false)
+                            .desired_width(400.)
+                            .char_limit(char_limit)
+                    );
                     ui.add_space(6.);
 
                     ui.with_layout(egui::Layout::right_to_left(Align::TOP), |ui| {
@@ -1867,7 +1862,11 @@ impl App {
                                 self.state.mod_notes.notes.insert(editor.note_key.clone(), editor.note_text.clone());
                             }
                             self.state.mod_notes.save().unwrap();
+                            to_remove.push(note_key.clone());
                         }
+                        ui.with_layout(egui::Layout::left_to_right(Align::TOP), |ui| {
+                            ui.label(format!("{}/{} characters", char_count, char_limit));
+                        });
                     });
                 });
 
