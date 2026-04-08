@@ -1765,7 +1765,7 @@ impl App {
     }
 
     fn show_about(&mut self, ctx: &egui::Context) {
-        if let Some(_) = self.about_window {
+        if self.about_window.is_some() {
             let mut open = true;
 
             egui::Window::new("About")
