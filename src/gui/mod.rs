@@ -1849,7 +1849,7 @@ impl App {
                     ui.add(
                         egui::TextEdit::singleline(&mut editor.note_text)
                             .cursor_at_end(false)
-                            .desired_width(400.)
+                            .desired_width(f32::INFINITY)
                             .char_limit(char_limit)
                     );
                     ui.add_space(6.);
