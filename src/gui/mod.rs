@@ -784,6 +784,23 @@ impl App {
                         ctx.scroll_to_match = false;
                     }
 
+                    let note_key = ModNotes::get_note_key(info);
+                    if let Some(note) = self.state.mod_notes.notes.get(&note_key) {
+                        let max_chars = ((ui.available_width() / (ui.text_style_height(&egui::TextStyle::Body) * 0.6)) as usize).saturating_sub(3).max(5);
+                        let note_sum = note.chars().take(max_chars).collect::<String>();
+                        let note_str = if note.len() > max_chars {
+                            format!("{}...", note_sum)
+                        } else {
+                            note_sum
+                        };
+
+                        ui.label(
+                            egui::RichText::new(note_str)
+                                .color(Color32::GRAY),
+                        )
+                        .on_hover_text(note);
+                    }
+
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                         ui_mod_tags(ctx, ui, info);
                     });
