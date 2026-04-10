@@ -994,6 +994,10 @@ impl App {
     }
 
     fn show_update_window(&mut self, ctx: &egui::Context) {
+        if !self.state.config.show_changelog {
+            return;
+        }
+
         if let (Some(update), Some(_)) =
             (self.available_update.as_ref(), self.show_update_time)
         {
@@ -1196,9 +1200,9 @@ impl App {
                                 ..Default::default()
                             },
                         );
-                        ui.label(job).on_hover_cursor(egui::CursorIcon::Help).on_hover_text(
-                            "Path to \"FSD-WindowsNoEditor.pak\" or \"FSD-WinGDK.pak\" located inside Deep Rock Galactic installation directory under \"/FSD/Content/Paks\"."
-                        );
+                        ui.label(job)
+                            .on_hover_cursor(egui::CursorIcon::Help)
+                            .on_hover_text("Path to \"FSD-WindowsNoEditor.pak\" or \"FSD-WinGDK.pak\" located inside Deep Rock Galactic installation directory under \"/FSD/Content/Paks\".");
                         ui.horizontal(|ui| {
                             let res = ui.add(
                                 egui::TextEdit::singleline(
@@ -1264,6 +1268,31 @@ impl App {
                                 .add(toggle_switch(&mut config.confirm_deletion))
                                 .changed()
                             {
+                                config.save().unwrap();
+                            }
+                        });
+                        ui.end_row();
+
+                        let mut job = LayoutJob::default();
+                        job.append(
+                            "Show release notes:",
+                            0.0,
+                            TextFormat {
+                                color: ui.visuals().text_color(),
+                                underline: Stroke::new(1.0, ui.visuals().text_color()),
+                                ..Default::default()
+                            },
+                        );
+                        ui.label(job)
+                            .on_hover_cursor(egui::CursorIcon::Help)
+                            .on_hover_text("Show changelog and auto-update window when a new version of mint-notag is available.");
+                        ui.horizontal(|ui| {
+                            let config = &mut self.state.config;
+                            if ui
+                                .add(toggle_switch(&mut config.show_changelog))
+                                .changed()
+                            {
+                                self.show_update_time = None;
                                 config.save().unwrap();
                             }
                         });

@@ -450,6 +450,8 @@ pub struct Config {
     pub sorting_config: Option<SortingConfig>,
     #[serde(default = "default_true")]
     pub confirm_deletion: bool,
+    #[serde(default = "default_true")]
+    pub show_changelog: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -529,6 +531,7 @@ impl Default for Config!["0.0.0"] {
             gui_theme: None,
             sorting_config: None,
             confirm_deletion: true,
+            show_changelog: true,
         }
     }
 }
@@ -543,6 +546,7 @@ impl Default for Config!["0.1.0"] {
             gui_theme: None,
             sorting_config: None,
             confirm_deletion: true,
+            show_changelog: true,
         }
     }
 }
@@ -555,6 +559,7 @@ impl From<Config!["0.0.0"]> for Config!["0.1.0"] {
             gui_theme: legacy.gui_theme,
             sorting_config: legacy.sorting_config,
             confirm_deletion: legacy.confirm_deletion,
+            show_changelog: legacy.show_changelog,
         }
     }
 }
