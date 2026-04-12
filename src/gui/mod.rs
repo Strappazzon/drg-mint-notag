@@ -441,7 +441,7 @@ impl App {
                                 "V",
                                 ui,
                                 Some(egui::Color32::LIGHT_GREEN),
-                                Some("Does not change gameplay elements."),
+                                Some("Does not change gameplay elements"),
                             );
                         }
                         ApprovalStatus::Approved => {
@@ -449,7 +449,7 @@ impl App {
                                 "A",
                                 ui,
                                 Some(egui::Color32::LIGHT_BLUE),
-                                Some("Changes gameplay elements."),
+                                Some("Changes gameplay elements"),
                             );
                         }
                         ApprovalStatus::Sandbox => {
@@ -457,7 +457,7 @@ impl App {
                                 "S",
                                 ui,
                                 Some(egui::Color32::LIGHT_YELLOW),
-                                Some("Dramatically changes gameplay elements, awaiting approval or manually added.")
+                                Some("Dramatically changes gameplay elements, awaiting approval or manually added")
                             );
                         }
                     }
@@ -468,7 +468,7 @@ impl App {
                                 "R",
                                 ui,
                                 Some(egui::Color32::LIGHT_RED),
-                                Some("All lobby members must use this mod for it to work correctly.",),
+                                Some("All lobby members must use this mod for it to work correctly",),
                             );
                         }
                         RequiredStatus::Optional => {}
@@ -1202,7 +1202,7 @@ impl App {
                         );
                         ui.label(job)
                             .on_hover_cursor(egui::CursorIcon::Help)
-                            .on_hover_text("Path to \"FSD-WindowsNoEditor.pak\" or \"FSD-WinGDK.pak\" located inside Deep Rock Galactic installation directory under \"/FSD/Content/Paks\".");
+                            .on_hover_text("Path to \"FSD-WindowsNoEditor.pak\" or \"FSD-WinGDK.pak\" located inside the Deep Rock Galactic installation directory under \"/FSD/Content/Paks\"");
                         ui.horizontal(|ui| {
                             let res = ui.add(
                                 egui::TextEdit::singleline(
@@ -1285,7 +1285,7 @@ impl App {
                         );
                         ui.label(job)
                             .on_hover_cursor(egui::CursorIcon::Help)
-                            .on_hover_text("Show changelog and auto-update window when a new version of mint-notag is available.");
+                            .on_hover_text("Show changelog and auto-update window when a new version of mint-notag is available");
                         ui.horizontal(|ui| {
                             let config = &mut self.state.config;
                             if ui
@@ -1350,7 +1350,7 @@ impl App {
 
                 });
             if try_save {
-                if let Err(e) = is_drg_pak(&window.drg_pak_path).context("Selected pak is not valid.") {
+                if let Err(e) = is_drg_pak(&window.drg_pak_path).context("Selected pak path is not valid") {
                     window.drg_pak_path_err = Some(e.to_string());
                 } else {
                     self.state.config.drg_pak_path = Some(PathBuf::from(
@@ -2271,7 +2271,7 @@ impl eframe::App for App {
                         ui.add_enabled_ui(self.state.config.drg_pak_path.is_some(), |ui| {
                             let mut button = ui
                                 .button("Apply changes")
-                                .on_hover_text("Installs the DLL hook inside the game folder and regenerates mod bundle");
+                                .on_hover_text("Install the DLL hook inside the game folder and regenerate mod bundle");
                             if self.state.config.drg_pak_path.is_none() {
                                 button = button
                                     .on_disabled_hover_text("Game not found. Configure it in the settings menu.");
@@ -2309,7 +2309,7 @@ impl eframe::App for App {
                         ui.add_enabled_ui(self.state.config.drg_pak_path.is_some(), |ui| {
                             let mut button = ui
                                 .button("Uninstall hook and mods")
-                                .on_hover_text("Removes the DLL hook and mod bundle from the game folder");
+                                .on_hover_text("Remove the DLL hook and mod bundle from the game folder");
                             if self.state.config.drg_pak_path.is_none() {
                                 button = button
                                     .on_disabled_hover_text("Game not found. Configure it in the settings menu.");
@@ -2348,7 +2348,7 @@ impl eframe::App for App {
 
                         if ui
                             .button("Update cache")
-                            .on_hover_text("Checks for updates for all mods and updates local cache")
+                            .on_hover_text("Check all mods for updates and update the local cache")
                             .clicked()
                         {
                             message::UpdateCache::send(self);
@@ -2525,7 +2525,7 @@ impl eframe::App for App {
                 for category in SortBy::iter() {
                     let mut radio_label = category.as_str().to_owned();
                     if sort_category == Some(category) {
-                        radio_label.push_str(if is_ascending { " ⏶" } else { " ⏷" });
+                        radio_label.push_str(if is_ascending { " \u{23F6}" } else { " \u{23F7}" });
                     }
                     let resp = ui.radio_value(&mut sort_category, Some(category), radio_label);
                     if resp.clicked() {
