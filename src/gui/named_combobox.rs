@@ -4,7 +4,7 @@ use super::{colors, custom_popup_above_or_below_widget, is_committed};
 
 use eframe::egui::{self, RichText};
 use eframe::epaint::Color32;
-use titlecase::{Titlecase};
+use titlecase::Titlecase;
 
 use crate::state::{ModData_v0_2_0 as ModData, ModProfile_v0_2_0 as ModProfile};
 
@@ -79,6 +79,7 @@ pub(crate) fn ui<E, N>(
     name: &str,
     entries: &mut N,
     additional_ui: Option<impl FnOnce(&mut egui::Ui, &mut N)>,
+    mod_count: Option<(usize, usize)>,
     confirm_deletion: bool,
 ) -> bool
 where
@@ -90,6 +91,15 @@ where
             ui.label(format!("{name}").titlecase());
 
             ui.with_layout(egui::Layout::right_to_left(egui::Align::TOP), |ui| {
+                if let Some((active, total)) = mod_count {
+                    ui.horizontal(|ui| {
+                        ui.set_width(60.);
+                        ui.label(format!("Active: {}", active))
+                            .on_hover_text(format!("Active mods: {}/{}", active, total));
+                    });
+                    ui.add_space(16.);
+                }
+
                 mk_delete(ui, name, entries, &mut modified, confirm_deletion);
                 if let Some(additional_ui) = additional_ui {
                     additional_ui(ui, entries);

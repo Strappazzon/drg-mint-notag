@@ -2468,11 +2468,22 @@ impl eframe::App for App {
                 */
             };
 
+            let active_profile = self.state.mod_data.active_profile.clone();
+            let active_mods = {
+                let mut count = 0;
+                self.state.mod_data.for_each_enabled_mod(&active_profile, |_| {
+                    count += 1;
+                });
+                count
+            };
+            let total_mods = self.state.mod_data.profiles[&active_profile].mods.len();
+
             if named_combobox::ui(
                 ui,
                 "profile",
                 self.state.mod_data.deref_mut().deref_mut(),
                 Some(buttons),
+                Some((active_mods, total_mods)),
                 self.state.config.confirm_deletion,
             ) {
                 self.state.mod_data.save().unwrap();
