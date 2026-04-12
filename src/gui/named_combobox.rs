@@ -4,6 +4,7 @@ use super::{colors, custom_popup_above_or_below_widget, is_committed};
 
 use eframe::egui::{self, RichText};
 use eframe::epaint::Color32;
+use titlecase::{Titlecase};
 
 use crate::state::{ModData_v0_2_0 as ModData, ModProfile_v0_2_0 as ModProfile};
 
@@ -86,16 +87,18 @@ where
     let mut modified = false;
     ui.push_id(name, |ui| {
         ui.horizontal(|ui| {
-            mk_add(ui, name, entries, &mut modified);
-            mk_delete(ui, name, entries, &mut modified, confirm_deletion);
-            mk_rename(ui, name, entries, &mut modified);
+            ui.label(format!("{name}").titlecase());
 
             ui.with_layout(egui::Layout::right_to_left(egui::Align::TOP), |ui| {
-                mk_duplicate(ui, name, entries, &mut modified);
-
+                mk_delete(ui, name, entries, &mut modified, confirm_deletion);
                 if let Some(additional_ui) = additional_ui {
                     additional_ui(ui, entries);
                 }
+                mk_rename(ui, name, entries, &mut modified);
+                mk_duplicate(ui, name, entries, &mut modified);
+                mk_add(ui, name, entries, &mut modified);
+
+                ui.add_space(16.);
 
                 ui.with_layout(ui.layout().with_main_justify(true), |ui| {
                     mk_dropdown(ui, name, entries, &mut modified);
@@ -200,7 +203,7 @@ where
     N: NamedEntries<E>,
 {
     let response = ui
-        .button("\u{1F5D0}")
+        .button("Clone")
         .on_hover_text_at_pointer(format!("Duplicate {name}"));
     let popup_id = ui.make_persistent_id(format!("duplicate-{name}"));
     if response.clicked() {
