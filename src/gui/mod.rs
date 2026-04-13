@@ -1308,14 +1308,28 @@ impl App {
                         ui.horizontal(|ui| {
                             ui.horizontal(|ui| {
                                 let config = &mut self.state.config;
-                                let changed =
-                                    ui.selectable_value(&mut config.gui_theme, Some(GuiTheme::Light), "Light").changed() ||
-                                    ui.selectable_value(&mut config.gui_theme, Some(GuiTheme::Dark), "Dark").changed() ||
-                                    ui.selectable_value(&mut config.gui_theme, None, "System").changed();
-                                if changed {
-                                    ctx.set_visuals(config.gui_theme.map(GuiTheme::visuals).unwrap_or_else(|| self.default_visuals.clone()));
-                                    config.save().unwrap();
-                                }
+
+                                egui::ComboBox::from_label("")
+                                    .selected_text(
+                                        {
+                                            match config.gui_theme {
+                                                Some(GuiTheme::Light) => "Light",
+                                                Some(GuiTheme::Dark) => "Dark",
+                                                None => "System",
+                                            }
+                                        }
+                                        .to_string(),
+                                    )
+                                    .show_ui(ui, |ui| {
+                                        let changed =
+                                            ui.selectable_value(&mut config.gui_theme, Some(GuiTheme::Light), "Light").changed() ||
+                                            ui.selectable_value(&mut config.gui_theme, Some(GuiTheme::Dark), "Dark").changed() ||
+                                            ui.selectable_value(&mut config.gui_theme, None, "System").changed();
+                                        if changed {
+                                            ctx.set_visuals(config.gui_theme.map(GuiTheme::visuals).unwrap_or_else(|| self.default_visuals.clone()));
+                                            config.save().unwrap();
+                                        }
+                                    });
                             });
                         });
                         ui.end_row();
