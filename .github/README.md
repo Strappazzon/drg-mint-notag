@@ -19,13 +19,18 @@ This a fork of mint with some modifications.
 Changes or merges since [upstream/master @ 940e7aa](https://github.com/trumank/mint/tree/940e7aaf960dc4280fc0442a6c7f87afec440c0c):
 
 - Omitted the `[MODDED]` prefix from the public server name
+- Load priority
+  - In case of asset conflict, mods with higher priority take precedence
 - Changed app title to `mint-notag` from `mint`
-- Confirmation dialog when deleting a mod
+- Confirmation dialog when deleting a mod or profile
 - Sorting options for mods
 - Search bar always visible
 - Time since last action
 - Detailed mod info view
   - Click the info button beside the mod name to see the its description, changelog and download the latest pak
+- Note taking feature
+  - Click the note button beside the mod name to add a comment
+  - An excerpt of the note will be shown next to the mod name
 - App [icon](../assets/icon.ico) in the title bar, taskbar and Windows executable
 - Bigger window size
 - Centered main window at launch
@@ -62,7 +67,7 @@ To launch the program on Linux distros, use the following commands:
 
 ```sh
 export LD_LIBRARY_PATH=~/opt/lib:$LD_LIBRARY_PATH
-env -u WAYLAND_DISPLAY ./drg_mod_integration
+env -u WAYLAND_DISPLAY ./mint
 
 # Credits to https://github.com/trumank/mint/issues/299#issuecomment-3401198284
 ```
