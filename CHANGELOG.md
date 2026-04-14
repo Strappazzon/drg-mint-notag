@@ -4,6 +4,33 @@
 
 ## [Unreleased] - ReleaseDate
 
+## [0.3.0] - 2026-04-14
+
+### General
+
+- Added load priority
+  - In case of asset conflict, mods with higher priority take precedence
+- Added note taking feature
+  - An excerpt of the note will be shown next to the mod name
+- Added a setting to control confirmation dialogs
+- Added a setting to toggle release notes when a new version of mint-notag is available to download
+
+### User Interface
+
+- Added active mods count to the profile toolbar
+- Reorganized profile toolbar
+- Added confirmation dialog before deleting a profile
+- Replaced color scheme radio buttons with a dropdown
+
+### Breaking changes
+
+Upstream mint and other forks will **no longer be compatible with mint-notag config**.
+
+- Config version has been upgraded to `0.1.0`
+  - This has been done to avoid losing new settings added in this release when switching to other mint versions
+- Mod data version has been upgraded to `0.2.0`
+  - This has been done to avoid losing mod priority when switching to other mint versions
+
 ## [0.2.16] - 2026-03-30
 
 - Added detailed mod info view
@@ -85,7 +112,8 @@
 - Fix including same asset paths with different casings causing Unreal Engine to load neither ([#29](https://github.com/trumank/drg-mod-integration/issues/29))
 
 <!-- next-url -->
-[Unreleased]: https://github.com/Strappazzon/drg-mint-notag/compare/v0.2.16...HEAD
+[Unreleased]: https://github.com/Strappazzon/drg-mint-notag/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/Strappazzon/drg-mint-notag/compare/v0.2.16...v0.3.0
 [0.2.16]: https://github.com/Strappazzon/drg-mint-notag/compare/v0.2.15...v0.2.16
 [0.2.15]: https://github.com/Strappazzon/drg-mint-notag/compare/v0.2.14...v0.2.15
 [0.2.14]: https://github.com/Strappazzon/drg-mint-notag/compare/v0.2.13...v0.2.14
