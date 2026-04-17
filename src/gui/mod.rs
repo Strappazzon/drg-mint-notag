@@ -80,11 +80,16 @@ pub fn gui(dirs: Dirs, args: Option<Vec<String>>) -> Result<()> {
 pub mod colors {
     use eframe::epaint::Color32;
 
-    pub const DARK_RED: Color32 = Color32::DARK_RED;
-    pub const DARKER_RED: Color32 = Color32::from_rgb(110, 0, 0);
+    pub const AMBER: Color32 = Color32::from_rgb(255, 191, 0);
 
     pub const DARK_GREEN: Color32 = Color32::DARK_GREEN;
     pub const DARKER_GREEN: Color32 = Color32::from_rgb(0, 80, 0);
+
+    pub const DARK_RED: Color32 = Color32::DARK_RED;
+    pub const DARKER_RED: Color32 = Color32::from_rgb(110, 0, 0);
+
+    pub const GOLD: Color32 = Color32::from_rgb(200, 170, 100);
+    pub const DARK_GOLD: Color32 = Color32::from_rgb(150, 125, 70);
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -1539,13 +1544,11 @@ impl App {
                         egui::ScrollArea::vertical()
                             .max_height(scroll_height)
                             .show(ui, |ui| {
-                                const AMBER: Color32 = Color32::from_rgb(255, 191, 0);
-
                                 if let Some(conflicting_mods) = &report.conflicting_mods {
                                     if !conflicting_mods.is_empty() {
                                         CollapsingHeader::new(
                                             RichText::new("\u{26A0} Mods(s) with conflicting asset modifications detected")
-                                                .color(AMBER),
+                                                .color(colors::AMBER),
                                         )
                                         .default_open(true)
                                         .show(ui, |ui| {
@@ -1555,7 +1558,7 @@ impl App {
                                                         "\u{26A0} Conflicting modification of asset `{}`",
                                                         path
                                                     ))
-                                                    .color(AMBER),
+                                                    .color(colors::AMBER),
                                                 )
                                                 .show(
                                                     ui,
@@ -1604,7 +1607,7 @@ impl App {
                                             RichText::new(
                                                 "\u{26A0} Mods(s) with shader files included detected",
                                             )
-                                            .color(AMBER),
+                                            .color(colors::AMBER),
                                         )
                                         .default_open(true)
                                         .show(ui, |ui| {
@@ -1615,7 +1618,7 @@ impl App {
                                                             "\u{26A0} {} includes one or more shader files",
                                                             r#mod.url
                                                         ))
-                                                        .color(AMBER),
+                                                        .color(colors::AMBER),
                                                     )
                                                     .show(ui, |ui| {
                                                         shader_files.iter().for_each(|shader_file| {
@@ -1634,7 +1637,7 @@ impl App {
                                             RichText::new(
                                                 "\u{26A0} Mod(s) with outdated pak version detected",
                                             )
-                                            .color(AMBER),
+                                            .color(colors::AMBER),
                                         )
                                         .default_open(true)
                                         .show(ui, |ui| {
@@ -1645,7 +1648,7 @@ impl App {
                                                             "\u{26A0} {} includes outdated pak version {}",
                                                             r#mod.url, version
                                                         ))
-                                                        .color(AMBER),
+                                                        .color(colors::AMBER),
                                                     );
                                                 },
                                             );
@@ -1659,7 +1662,7 @@ impl App {
                                             RichText::new(
                                                 "\u{26A0} Mod(s) with empty archives detected",
                                             )
-                                            .color(AMBER),
+                                            .color(colors::AMBER),
                                         )
                                         .default_open(true)
                                         .show(ui, |ui| {
@@ -1669,7 +1672,7 @@ impl App {
                                                         "\u{26A0} {} contains an empty archive",
                                                         r#mod.url
                                                     ))
-                                                    .color(AMBER),
+                                                    .color(colors::AMBER),
                                                 );
                                             });
                                         });
@@ -1682,7 +1685,7 @@ impl App {
                                             RichText::new(
                                                 "\u{26A0} Mod(s) with only non-`.pak` files detected",
                                             )
-                                            .color(AMBER),
+                                            .color(colors::AMBER),
                                         )
                                         .default_open(true)
                                         .show(ui, |ui| {
@@ -1692,7 +1695,7 @@ impl App {
                                                         "\u{26A0} {} contains only non-`.pak` files, perhaps the author forgot to pack it?",
                                                         r#mod.url
                                                     ))
-                                                    .color(AMBER),
+                                                    .color(colors::AMBER),
                                                 );
                                             });
                                         });
@@ -1705,7 +1708,7 @@ impl App {
                                             RichText::new(
                                                 "\u{26A0} Mod(s) with multiple `.pak`s detected",
                                             )
-                                            .color(AMBER),
+                                            .color(colors::AMBER),
                                         )
                                         .default_open(true)
                                         .show(ui, |ui| {
@@ -1714,7 +1717,7 @@ impl App {
                                                     "\u{26A0} {} contains multiple `.pak`s, only the first encountered `.pak` will be loaded",
                                                     r#mod.url
                                                 ))
-                                                .color(AMBER));
+                                                .color(colors::AMBER));
                                             });
                                         });
                                     }
@@ -1726,7 +1729,7 @@ impl App {
                                             RichText::new(
                                                 "\u{26A0} Mod(s) with non-asset files detected",
                                             )
-                                            .color(AMBER),
+                                            .color(colors::AMBER),
                                         )
                                         .default_open(true)
                                         .show(ui, |ui| {
@@ -1736,7 +1739,7 @@ impl App {
                                                         "\u{26A0} {} includes non-asset files",
                                                         r#mod.url
                                                     ))
-                                                    .color(AMBER),
+                                                    .color(colors::AMBER),
                                                 )
                                                 .show(ui, |ui| {
                                                     files.iter().for_each(|file| {
@@ -1754,7 +1757,7 @@ impl App {
                                             RichText::new(
                                                 "\u{26A0} Mod(s) with split {uexp, uasset} pairs detected",
                                             )
-                                            .color(AMBER),
+                                            .color(colors::AMBER),
                                         )
                                         .default_open(true)
                                         .show(ui, |ui| {
@@ -1764,7 +1767,7 @@ impl App {
                                                         "\u{26A0} {} includes split {{uexp, uasset}} pairs",
                                                         r#mod.url
                                                     ))
-                                                    .color(AMBER),
+                                                    .color(colors::AMBER),
                                                 )
                                                 .show(ui, |ui| {
                                                     files.iter().for_each(|(file, kind)| {
@@ -1789,7 +1792,7 @@ impl App {
                                             RichText::new(
                                                 "\u{26A0} Mod(s) with unmodified game assets detected",
                                             )
-                                            .color(AMBER),
+                                            .color(colors::AMBER),
                                         )
                                         .default_open(true)
                                         .show(ui, |ui| {
@@ -1799,7 +1802,7 @@ impl App {
                                                         "\u{26A0} {} includes unmodified game assets",
                                                         r#mod.url
                                                     ))
-                                                    .color(AMBER),
+                                                    .color(colors::AMBER),
                                                 )
                                                 .show(ui, |ui| {
                                                     files.iter().for_each(|file| {

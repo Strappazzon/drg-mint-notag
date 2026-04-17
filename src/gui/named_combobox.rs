@@ -213,8 +213,14 @@ where
     N: NamedEntries<E>,
 {
     let response = ui
-        .button("Clone")
-        .on_hover_text_at_pointer(format!("Duplicate {name}"));
+        .scope(|ui| {
+            ui.visuals_mut().widgets.hovered.weak_bg_fill = colors::GOLD;
+            ui.visuals_mut().widgets.active.weak_bg_fill = colors::DARK_GOLD;
+            ui.button("Clone")
+                .on_hover_text_at_pointer(format!("Duplicate {name}"))
+        })
+        .inner;
+
     let popup_id = ui.make_persistent_id(format!("duplicate-{name}"));
     if response.clicked() {
         ui.memory_mut(|mem| mem.open_popup(popup_id));
