@@ -126,7 +126,9 @@ where
     ui.add_enabled_ui(entries.len() > 1, |ui| {
         ui.scope(|ui| {
             ui.visuals_mut().widgets.hovered.weak_bg_fill = colors::DARK_RED;
+            ui.visuals_mut().widgets.hovered.fg_stroke.color = Color32::WHITE;
             ui.visuals_mut().widgets.active.weak_bg_fill = colors::DARKER_RED;
+            ui.visuals_mut().widgets.active.fg_stroke.color = Color32::WHITE;
             let response = ui
                 .button("\u{1F5D1}")
                 .on_hover_text_at_pointer(format!("Delete {name}"));
@@ -156,7 +158,9 @@ where
         let response = ui
             .scope(|ui| {
                 ui.visuals_mut().widgets.hovered.weak_bg_fill = colors::DARK_GREEN;
+                ui.visuals_mut().widgets.hovered.fg_stroke.color = Color32::WHITE;
                 ui.visuals_mut().widgets.active.weak_bg_fill = colors::DARKER_GREEN;
+                ui.visuals_mut().widgets.active.fg_stroke.color = Color32::WHITE;
                 ui.button("\u{2795}")
                     .on_hover_text_at_pointer(format!("Add new {name}"))
             })
