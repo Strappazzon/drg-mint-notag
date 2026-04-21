@@ -462,7 +462,7 @@ impl App {
                                 "S",
                                 ui,
                                 Some(egui::Color32::LIGHT_YELLOW),
-                                Some("Dramatically changes gameplay elements, awaiting approval or manually added")
+                                Some("Dramatically changes gameplay elements, awaiting approval or manually added"),
                             );
                         }
                     }
@@ -473,7 +473,7 @@ impl App {
                                 "R",
                                 ui,
                                 Some(egui::Color32::LIGHT_RED),
-                                Some("All lobby members must use this mod for it to work correctly",),
+                                Some("All lobby members must use this mod for it to work correctly"),
                             );
                         }
                         RequiredStatus::Optional => {}
@@ -610,14 +610,6 @@ impl App {
                         )
                         .on_hover_text_at_pointer("Load Priority\nIn case of asset conflict, mods with higher priority take precedence.\nCan have duplicate values.",);
                     });
-
-                    if ui
-                        .button("\u{1F4CB}")
-                        .on_hover_text_at_pointer("Copy URL")
-                        .clicked()
-                    {
-                        ui.output_mut(|o| o.copied_text = mc.spec.url.to_owned());
-                    }
 
                     if let Some(modio_id) = info.modio_id
                         && let Some(modio_provider_params) = self.state.config.provider_parameters.get("modio")
@@ -784,6 +776,13 @@ impl App {
                     }
 
                     let res = ui.hyperlink_to(job, &mc.spec.url);
+                    res.context_menu(|ui| {
+                        if ui.button("Copy URL").clicked() {
+                            ui.output_mut(|o| o.copied_text = mc.spec.url.to_owned());
+                            ui.close_menu();
+                        }
+                    });
+
                     if is_match && self.scroll_to_match {
                         res.scroll_to_me(None);
                         ctx.scroll_to_match = false;
@@ -810,14 +809,13 @@ impl App {
                         ui_mod_tags(ctx, ui, info);
                     });
                 } else {
-                    if ui
-                        .button("\u{1F4CB}")
-                        .on_hover_text_at_pointer("Copy URL")
-                        .clicked()
-                    {
-                        ui.output_mut(|o| o.copied_text = mc.spec.url.to_owned());
-                    }
-                    ui.hyperlink(&mc.spec.url);
+                    let res = ui.hyperlink(&mc.spec.url);
+                    res.context_menu(|ui| {
+                        if ui.button("Copy URL").clicked() {
+                            ui.output_mut(|o| o.copied_text = mc.spec.url.to_owned());
+                            ui.close_menu();
+                        }
+                    });
                 }
             };
 
