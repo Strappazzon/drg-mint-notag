@@ -14,7 +14,7 @@ edition = "2021"
 
 [workspace.dependencies]
 anyhow = { version = "1.0.79", features = ["backtrace"] }
-patternsleuth = { git = "https://github.com/trumank/patternsleuth" }
+patternsleuth = { git = "https://github.com/trumank/patternsleuth", rev = "5786164189604fd55f647aa38ef0bfd6f23f7d58" }
 steamlocate = "2.0.0-alpha.0"
 repak = { git = "https://github.com/trumank/repak", rev = "96410d664ac46c87cf451a3c5bad38d8cf42dda5" }
 serde = { version = "1.0.195", features = ["derive"] }
@@ -39,6 +39,8 @@ winresource = "=0.1.19"
 
 [dev-dependencies]
 mockall = "0.11.4"
+object = "0.32.2"
+paste = "1.0.15"
 pulldown-cmark = "=0.10.0"
 simple-easing = "=1.0.1"
 smithay-clipboard = "=0.7.2"

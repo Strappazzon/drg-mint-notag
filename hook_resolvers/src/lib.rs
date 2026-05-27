@@ -1,12 +1,17 @@
 use patternsleuth::resolvers::futures::future::join_all;
-use patternsleuth::resolvers::unreal::*;
+use patternsleuth::resolvers::unreal::save_game::{
+    UGameplayStaticsDoesSaveGameExist, UGameplayStaticsLoadGameFromMemory,
+    UGameplayStaticsLoadGameFromSlot, UGameplayStaticsSaveGameToMemory,
+    UGameplayStaticsSaveGameToSlot,
+};
 use patternsleuth::resolvers::*;
 use patternsleuth::scanner::Pattern;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 #[cfg_attr(feature = "serde-resolvers", derive(serde::Serialize, serde::Deserialize))]
 pub struct GetServerName(pub usize);
-impl_resolver_singleton!(GetServerName, |ctx| async {
+impl_resolver_singleton!(collect, GetServerName);
+impl_resolver_singleton!(PEImage, GetServerName, |ctx| async {
     let patterns = [
         "48 89 5C 24 10 48 89 6C 24 18 48 89 74 24 20 57 41 56 41 57 48 83 EC 30 45 33 FF 4C 8B F2 48 8B D9 44 89 7C 24 50 41 8B FF"
     ];
@@ -23,10 +28,11 @@ impl_resolver_singleton!(GetServerName, |ctx| async {
     ))
 });
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 #[cfg_attr(feature = "serde-resolvers", derive(serde::Serialize, serde::Deserialize))]
 pub struct Disable(pub usize);
-impl_resolver_singleton!(Disable, |ctx| async {
+impl_resolver_singleton!(collect, Disable);
+impl_resolver_singleton!(PEImage, Disable, |ctx| async {
     let patterns = ["4C 8B B4 24 48 01 00 00 0F 84"];
 
     let res = join_all(patterns.iter().map(|p| ctx.scan(Pattern::new(p).unwrap()))).await;
@@ -34,10 +40,11 @@ impl_resolver_singleton!(Disable, |ctx| async {
     Ok(Self(ensure_one(res.into_iter().flatten())?))
 });
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 #[cfg_attr(feature = "serde-resolvers", derive(serde::Serialize, serde::Deserialize))]
 pub struct Resize16(pub usize);
-impl_resolver_singleton!(Resize16, |ctx| async {
+impl_resolver_singleton!(collect, Resize16);
+impl_resolver_singleton!(PEImage, Resize16, |ctx| async {
     let patterns =
         ["48 89 5C 24 ?? 57 48 83 EC 20 48 63 DA 48 8B F9 85 D2 74 ?? 48 8B CB 33 D2 48 03 C9"];
 
@@ -46,10 +53,11 @@ impl_resolver_singleton!(Resize16, |ctx| async {
     Ok(Self(ensure_one(res.into_iter().flatten())?))
 });
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 #[cfg_attr(feature = "serde-resolvers", derive(serde::Serialize, serde::Deserialize))]
 pub struct FMemoryFree(pub usize);
-impl_resolver_singleton!(FMemoryFree, |ctx| async {
+impl_resolver_singleton!(collect, FMemoryFree);
+impl_resolver_singleton!(PEImage, FMemoryFree, |ctx| async {
     let patterns = ["48 85 C9 74 ?? 53 48 83 EC 20 48 8B D9 48 8B 0D"];
 
     let res = join_all(patterns.iter().map(|p| ctx.scan(Pattern::new(p).unwrap()))).await;
@@ -58,7 +66,7 @@ impl_resolver_singleton!(FMemoryFree, |ctx| async {
 });
 
 impl_try_collector! {
-    #[derive(Debug)]
+    #[derive(Debug, PartialEq)]
     #[cfg_attr(feature = "serde-resolvers", derive(serde::Serialize, serde::Deserialize))]
     pub struct ServerNameResolution {
         pub fmemory_free: FMemoryFree,
@@ -68,7 +76,7 @@ impl_try_collector! {
 }
 
 impl_try_collector! {
-    #[derive(Debug)]
+    #[derive(Debug, PartialEq)]
     #[cfg_attr(feature = "serde-resolvers", derive(serde::Serialize, serde::Deserialize))]
     pub struct SaveGameResolution {
         pub fmemory_free: FMemoryFree,
@@ -81,7 +89,7 @@ impl_try_collector! {
 }
 
 impl_collector! {
-    #[derive(Debug)]
+    #[derive(Debug, PartialEq)]
     #[cfg_attr(feature = "serde-resolvers", derive(serde::Serialize, serde::Deserialize))]
     pub struct HookResolution {
         pub fmemory_free: FMemoryFree,
