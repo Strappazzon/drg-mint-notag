@@ -2446,6 +2446,7 @@ dependencies = [
  "mint_lib",
  "patternsleuth",
  "retour",
+ "serde",
  "windows 0.52.0",
 ]
 
@@ -2454,6 +2455,7 @@ name = "hook_resolvers"
 version = "0.3.0"
 dependencies = [
  "patternsleuth",
+ "serde",
 ]
 
 [[package]]

@@ -4,6 +4,7 @@ use patternsleuth::resolvers::*;
 use patternsleuth::scanner::Pattern;
 
 #[derive(Debug)]
+#[cfg_attr(feature = "serde-resolvers", derive(serde::Serialize, serde::Deserialize))]
 pub struct GetServerName(pub usize);
 impl_resolver_singleton!(GetServerName, |ctx| async {
     let patterns = [
@@ -23,6 +24,7 @@ impl_resolver_singleton!(GetServerName, |ctx| async {
 });
 
 #[derive(Debug)]
+#[cfg_attr(feature = "serde-resolvers", derive(serde::Serialize, serde::Deserialize))]
 pub struct Disable(pub usize);
 impl_resolver_singleton!(Disable, |ctx| async {
     let patterns = ["4C 8B B4 24 48 01 00 00 0F 84"];
@@ -33,6 +35,7 @@ impl_resolver_singleton!(Disable, |ctx| async {
 });
 
 #[derive(Debug)]
+#[cfg_attr(feature = "serde-resolvers", derive(serde::Serialize, serde::Deserialize))]
 pub struct Resize16(pub usize);
 impl_resolver_singleton!(Resize16, |ctx| async {
     let patterns =
@@ -44,6 +47,7 @@ impl_resolver_singleton!(Resize16, |ctx| async {
 });
 
 #[derive(Debug)]
+#[cfg_attr(feature = "serde-resolvers", derive(serde::Serialize, serde::Deserialize))]
 pub struct FMemoryFree(pub usize);
 impl_resolver_singleton!(FMemoryFree, |ctx| async {
     let patterns = ["48 85 C9 74 ?? 53 48 83 EC 20 48 8B D9 48 8B 0D"];
@@ -55,6 +59,7 @@ impl_resolver_singleton!(FMemoryFree, |ctx| async {
 
 impl_try_collector! {
     #[derive(Debug)]
+    #[cfg_attr(feature = "serde-resolvers", derive(serde::Serialize, serde::Deserialize))]
     pub struct ServerNameResolution {
         pub fmemory_free: FMemoryFree,
         pub resize16: Resize16,
@@ -64,6 +69,7 @@ impl_try_collector! {
 
 impl_try_collector! {
     #[derive(Debug)]
+    #[cfg_attr(feature = "serde-resolvers", derive(serde::Serialize, serde::Deserialize))]
     pub struct SaveGameResolution {
         pub fmemory_free: FMemoryFree,
         pub save_game_to_memory: UGameplayStaticsSaveGameToMemory,
@@ -76,6 +82,7 @@ impl_try_collector! {
 
 impl_collector! {
     #[derive(Debug)]
+    #[cfg_attr(feature = "serde-resolvers", derive(serde::Serialize, serde::Deserialize))]
     pub struct HookResolution {
         pub fmemory_free: FMemoryFree,
         pub disable: Disable,
