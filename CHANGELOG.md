@@ -4,6 +4,18 @@
 
 ## [Unreleased] - ReleaseDate
 
+## [0.3.1] - 2026-05-29
+
+### General
+
+- Fixed disable modding pattern
+
+### User Interface
+
+- "Copy URL" is now accessible via context menu
+- "Clone" button is now dark yellow when hovering over it
+- Dark buttons now have white text when hovering over them
+
 ## [0.3.0] - 2026-04-14
 
 ### General
@@ -112,7 +124,8 @@ Upstream mint and other forks will **no longer be compatible with mint-notag con
 - Fix including same asset paths with different casings causing Unreal Engine to load neither ([#29](https://github.com/trumank/drg-mod-integration/issues/29))
 
 <!-- next-url -->
-[Unreleased]: https://github.com/Strappazzon/drg-mint-notag/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/Strappazzon/drg-mint-notag/compare/v0.3.1...HEAD
+[0.3.1]: https://github.com/Strappazzon/drg-mint-notag/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/Strappazzon/drg-mint-notag/compare/v0.2.16...v0.3.0
 [0.2.16]: https://github.com/Strappazzon/drg-mint-notag/compare/v0.2.15...v0.2.16
 [0.2.15]: https://github.com/Strappazzon/drg-mint-notag/compare/v0.2.14...v0.2.15
