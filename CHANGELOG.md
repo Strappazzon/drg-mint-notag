@@ -4,6 +4,10 @@
 
 ## [Unreleased] - ReleaseDate
 
+## [0.3.2] - 2026-05-29
+
+- Fixed HTTP 403 error when fetching new mods
+
 ## [0.3.1] - 2026-05-29
 
 ### General
@@ -124,7 +128,8 @@ Upstream mint and other forks will **no longer be compatible with mint-notag con
 - Fix including same asset paths with different casings causing Unreal Engine to load neither ([#29](https://github.com/trumank/drg-mod-integration/issues/29))
 
 <!-- next-url -->
-[Unreleased]: https://github.com/Strappazzon/drg-mint-notag/compare/v0.3.1...HEAD
+[Unreleased]: https://github.com/Strappazzon/drg-mint-notag/compare/v0.3.2...HEAD
+[0.3.2]: https://github.com/Strappazzon/drg-mint-notag/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/Strappazzon/drg-mint-notag/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/Strappazzon/drg-mint-notag/compare/v0.2.16...v0.3.0
 [0.2.16]: https://github.com/Strappazzon/drg-mint-notag/compare/v0.2.15...v0.2.16
