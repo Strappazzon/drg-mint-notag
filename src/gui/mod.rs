@@ -823,7 +823,9 @@ impl App {
                 |ctx: &mut Ctx, ui: &mut Ui, mc: &mut ModOrGroup, row_index: usize| {
                     ui.scope(|ui| {
                         ui.visuals_mut().widgets.hovered.weak_bg_fill = colors::DARK_RED;
+                        ui.visuals_mut().widgets.hovered.fg_stroke.color = Color32::WHITE;
                         ui.visuals_mut().widgets.active.weak_bg_fill = colors::DARKER_RED;
+                        ui.visuals_mut().widgets.active.fg_stroke.color = Color32::WHITE;
                         if ui
                             .add(Button::new("\u{1F5D1}"))
                             .on_hover_text_at_pointer("Delete mod")
