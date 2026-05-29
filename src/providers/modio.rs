@@ -285,10 +285,10 @@ impl DrgModio for modio::Modio {
             .collect::<Vec<_>>())
     }
     async fn fetch_mods_by_name(&self, name_id: &str) -> Result<Vec<ModioModResponse>> {
-        use modio::filter::{Eq, In};
-        use modio::mods::filters::{NameId, Visible};
+        use modio::filter::Eq;
+        use modio::mods::filters::NameId;
 
-        let filter = NameId::eq(name_id).and(Visible::_in(vec![0, 1]));
+        let filter = NameId::eq(name_id);
         Ok(self
             .game(MODIO_DRG_ID)
             .mods()
