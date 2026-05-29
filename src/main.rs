@@ -1,10 +1,10 @@
 use std::collections::BTreeSet;
-use std::fs::File;
 use std::io::BufWriter;
 use std::path::PathBuf;
 
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
+use fs_err as fs;
 use tracing::{debug, info};
 use tracing_appender::non_blocking::WorkerGuard;
 use tracing_subscriber::filter;
@@ -185,7 +185,7 @@ fn setup_logging(dirs: &Dirs) -> Result<WorkerGuard> {
     }
 
     let log_path = dirs.data_dir.join("mint.log");
-    let f = File::create(&log_path)?;
+    let f = fs::File::create(&log_path)?;
     let writer = BufWriter::new(f);
     let (log_file_appender, guard) = tracing_appender::non_blocking(writer);
     let debug_file_log = fmt::layer()

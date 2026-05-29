@@ -57,6 +57,7 @@ eframe = "=0.27.2"
 egui = "=0.27.2"
 egui_commonmark = { version = "=0.14.0", features = ["fetch"] }
 egui_dnd = "=0.8.0"
+fs-err = "=2.11.0"
 futures = "0.3.30"
 hex = "0.4.3"
 image = { version = "0.24.7", default-features = false, features = ["ico", "jpeg", "png"] }
