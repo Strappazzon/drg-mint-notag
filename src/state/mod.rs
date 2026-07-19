@@ -692,7 +692,7 @@ fn read_mod_notes_or_default(
 #[cfg(test)]
 mod mod_data_tests {
     use super::{
-        ModConfig, ModData_v0_1_0 as ModData, ModGroup, ModOrGroup, ModProfile_v0_1_0 as ModProfile,
+        ModConfig, ModData_v0_2_0 as ModData, ModGroup, ModOrGroup, ModProfile_v0_2_0 as ModProfile,
     };
     use crate::providers::ModSpecification;
 
@@ -702,18 +702,21 @@ mod mod_data_tests {
             spec: ModSpecification::new("a".to_string()),
             required: false,
             enabled: false,
+            priority: 50,
         };
 
         let mod_2 = ModConfig {
             spec: ModSpecification::new("b".to_string()),
             required: true,
             enabled: false,
+            priority: 50,
         };
 
         let mod_3 = ModConfig {
             spec: ModSpecification::new("c".to_string()),
             required: false,
             enabled: true,
+            priority: 50,
         };
 
         let mod_data = ModData {
