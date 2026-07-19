@@ -692,7 +692,7 @@ fn read_mod_notes_or_default(
 #[cfg(test)]
 mod mod_data_tests {
     use super::{
-        ModConfig, ModData_v0_1_0 as ModData, ModGroup, ModOrGroup, ModProfile_v0_1_0 as ModProfile,
+        ModConfig, ModData_v0_2_0 as ModData, ModGroup, ModOrGroup, ModProfile_v0_2_0 as ModProfile,
     };
     use crate::providers::ModSpecification;
 
