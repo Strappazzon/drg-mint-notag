@@ -7,7 +7,7 @@ use std::{
     sync::Arc,
 };
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use eframe::egui;
 use tokio::{
     sync::mpsc::{self, Sender},
@@ -827,9 +827,16 @@ async fn fetch_modio_mod_details(oauth_token: String, modio_id: u32) -> Result<M
         .with::<LoggingMiddleware>(Default::default())
         .build();
     let modio = Modio::new(credentials, client.clone())?;
-    let mod_ref = modio.mod_(MODIO_DRG_ID, modio_id);
-    let r#mod = mod_ref.clone().get().await?;
 
+    let r#mod = modio
+        .game(MODIO_DRG_ID)
+        .mods()
+        .search(Id::eq(modio_id))
+        .first()
+        .await?
+        .with_context(|| format!("mod {modio_id} not found"))?;
+
+    let mod_ref = modio.mod_(MODIO_DRG_ID, modio_id);
     let filter = with_limit(10).order_by(modio::user::filters::files::Version::desc());
     let versions = mod_ref.clone().files().search(filter).first_page().await?;
 

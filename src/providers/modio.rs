@@ -36,8 +36,8 @@ inventory::submit! {
             super::ProviderParameter {
                 id: "oauth",
                 name: "OAuth Token",
-                description: "mod.io OAuth token",
-                link: Some("https://mod.io/me/access"),
+                description: "mod.io OAuth Personal Access Token",
+                link: Some("https://mod.io/me/access#tokens"),
             },
         ]
     }
@@ -236,7 +236,7 @@ impl DrgModio for modio::Modio {
         Ok(())
     }
     async fn fetch_mod(&self, id: u32) -> Result<ModioMod> {
-        use modio::filter::NotEq;
+        use modio::filter::{Eq, NotEq};
         use modio::mods::filters::Id;
 
         let files = self
@@ -246,12 +246,18 @@ impl DrgModio for modio::Modio {
             .search(Id::ne(0))
             .collect()
             .await?;
-        let mod_ = self.game(MODIO_DRG_ID).mod_(id).get().await?;
+        let mod_ = self
+            .game(MODIO_DRG_ID)
+            .mods()
+            .search(Id::eq(id))
+            .first()
+            .await?
+            .with_context(|| format!("mod {id} not found"))?;
 
         Ok(ModioMod::new(mod_, files))
     }
     async fn fetch_files(&self, mod_id: u32) -> Result<ModioMod> {
-        use modio::filter::NotEq;
+        use modio::filter::{Eq, NotEq};
         use modio::mods::filters::Id;
 
         let files = self
@@ -261,17 +267,27 @@ impl DrgModio for modio::Modio {
             .search(Id::ne(0))
             .collect()
             .await?;
-        let mod_ = self.game(MODIO_DRG_ID).mod_(mod_id).get().await?;
+        let mod_ = self
+            .game(MODIO_DRG_ID)
+            .mods()
+            .search(Id::eq(mod_id))
+            .first()
+            .await?
+            .with_context(|| format!("mod {mod_id} not found"))?;
 
         Ok(ModioMod::new(mod_, files))
     }
     async fn fetch_file(&self, mod_id: u32, modfile_id: u32) -> Result<modio::files::File> {
-        Ok(self
-            .game(MODIO_DRG_ID)
+        use modio::filter::Eq;
+        use modio::files::filters::Id;
+
+        self.game(MODIO_DRG_ID)
             .mod_(mod_id)
-            .file(modfile_id)
-            .get()
-            .await?)
+            .files()
+            .search(Id::eq(modfile_id))
+            .first()
+            .await?
+            .with_context(|| format!("file {modfile_id} for mod {mod_id} not found"))
     }
     async fn fetch_dependencies(&self, mod_id: u32) -> Result<Vec<u32>> {
         Ok(self
