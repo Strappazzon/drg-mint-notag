@@ -4,6 +4,11 @@
 
 ## [Unreleased] - ReleaseDate
 
+## [0.3.3] - 2026-07-27
+
+- Fixed HTTP 403 error when using OAuth 2.0 Personal Access Token
+- Replaced mods order radio buttons with dropdowns
+
 ## [0.3.2] - 2026-05-29
 
 - Fixed HTTP 403 error when fetching new mods
@@ -128,7 +133,8 @@ Upstream mint and other forks will **no longer be compatible with mint-notag con
 - Fix including same asset paths with different casings causing Unreal Engine to load neither ([#29](https://github.com/trumank/drg-mod-integration/issues/29))
 
 <!-- next-url -->
-[Unreleased]: https://github.com/Strappazzon/drg-mint-notag/compare/v0.3.2...HEAD
+[Unreleased]: https://github.com/Strappazzon/drg-mint-notag/compare/v0.3.3...HEAD
+[0.3.3]: https://github.com/Strappazzon/drg-mint-notag/compare/v0.3.2...v0.3.3
 [0.3.2]: https://github.com/Strappazzon/drg-mint-notag/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/Strappazzon/drg-mint-notag/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/Strappazzon/drg-mint-notag/compare/v0.2.16...v0.3.0
