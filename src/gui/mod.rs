@@ -17,6 +17,7 @@ use std::{
 };
 
 use anyhow::{anyhow, Context, Result};
+use catppuccin_egui::*;
 use eframe::egui::{Button, CollapsingHeader, Label, RichText, Visuals};
 use eframe::epaint::{Pos2, Vec2};
 use eframe::{
@@ -96,6 +97,10 @@ pub mod colors {
 pub enum GuiTheme {
     Light,
     Dark,
+    CatpuccinLatte,
+    CatpuccinFrappe,
+    CatpuccinMacchiato,
+    CatpuccinMocha,
 }
 
 impl GuiTheme {
@@ -103,7 +108,21 @@ impl GuiTheme {
         match self {
             GuiTheme::Light => Visuals::light(),
             GuiTheme::Dark => Visuals::dark(),
+            GuiTheme::CatpuccinLatte => Self::apply_catppuccin(Visuals::light(), LATTE),
+            GuiTheme::CatpuccinFrappe => Self::apply_catppuccin(Visuals::dark(), FRAPPE),
+            GuiTheme::CatpuccinMacchiato => Self::apply_catppuccin(Visuals::dark(), MACCHIATO),
+            GuiTheme::CatpuccinMocha => Self::apply_catppuccin(Visuals::dark(), MOCHA),
         }
+    }
+
+    fn apply_catppuccin(base: Visuals, theme: catppuccin_egui::Theme) -> Visuals {
+        let mut style = egui::Style {
+            visuals: base,
+            ..Default::default()
+        };
+        catppuccin_egui::set_style_theme(&mut style, theme);
+        style.visuals.faint_bg_color = theme.mantle;
+        style.visuals;
     }
 }
 
@@ -1320,6 +1339,10 @@ impl App {
                                             match config.gui_theme {
                                                 Some(GuiTheme::Light) => "Light",
                                                 Some(GuiTheme::Dark) => "Dark",
+                                                Some(GuiTheme::CatpuccinLatte) => "Catpuccin Latte",
+                                                Some(GuiTheme::CatpuccinFrappe) => "Catpuccin Frappé",
+                                                Some(GuiTheme::CatpuccinMacchiato) => "Catpuccin Macchiato",
+                                                Some(GuiTheme::CatpuccinMocha) => "Catpuccin Mocha",
                                                 None => "System",
                                             }
                                         }
@@ -1329,6 +1352,10 @@ impl App {
                                         let changed =
                                             ui.selectable_value(&mut config.gui_theme, Some(GuiTheme::Light), "Light").changed() ||
                                             ui.selectable_value(&mut config.gui_theme, Some(GuiTheme::Dark), "Dark").changed() ||
+                                            ui.selectable_value(&mut config.gui_theme, Some(GuiTheme::CatpuccinLatte), "Catpuccin Latte").changed() ||
+                                            ui.selectable_value(&mut config.gui_theme, Some(GuiTheme::CatpuccinFrappe), "Catpuccin Frappé").changed() ||
+                                            ui.selectable_value(&mut config.gui_theme, Some(GuiTheme::CatpuccinMacchiato), "Catpuccin Macchiato").changed() ||
+                                            ui.selectable_value(&mut config.gui_theme, Some(GuiTheme::CatpuccinMocha), "Catpuccin Mocha").changed() ||
                                             ui.selectable_value(&mut config.gui_theme, None, "System").changed();
                                         if changed {
                                             ctx.set_visuals(config.gui_theme.map(GuiTheme::visuals).unwrap_or_else(|| self.default_visuals.clone()));

@@ -50,6 +50,7 @@ unicode-segmentation = "=1.7.1"
 ansi_term = "0.12.1"
 anyhow.workspace = true
 async-trait = "0.1.77"
+catppuccin-egui = { version = "=5.1.0", default-features = false, features = ["egui27"] }
 clap = { version = "=4.4.14", features = ["derive"] }
 dialoguer = "0.11.0"
 directories = "5.0.1"
