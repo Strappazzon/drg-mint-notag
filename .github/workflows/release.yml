@@ -17,7 +17,7 @@ jobs:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6.0.2
+        uses: actions/checkout@v7.0.1
 
       - name: Install Rust
         run: |
@@ -54,14 +54,14 @@ jobs:
             install-dist: curl --proto '=https' --tlsv1.2 -LsSf https://github.com/axodotdev/cargo-dist/releases/download/v0.0.7/cargo-dist-installer.sh | sh
           - os: windows-2022
             dist-args: --artifacts=local --target=x86_64-pc-windows-msvc
-            install-dist: irm  https://github.com/axodotdev/cargo-dist/releases/download/v0.0.7/cargo-dist-installer.ps1 | iex
+            install-dist: irm https://github.com/axodotdev/cargo-dist/releases/download/v0.0.7/cargo-dist-installer.ps1 | iex
 
     runs-on: ${{ matrix.os }}
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6.0.2
+        uses: actions/checkout@v7.0.1
 
       - name: Install Rust
         run: |
@@ -73,7 +73,7 @@ jobs:
         run: rustup target add x86_64-pc-windows-gnu
 
       - name: Cache dependencies
-        uses: Swatinem/rust-cache@v2.7.7
+        uses: Swatinem/rust-cache@v2.9.1
 
       - name: Install cargo-dist
         run: ${{ matrix.install-dist }}
