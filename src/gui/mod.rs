@@ -133,6 +133,7 @@ impl SortBy {
 const FOLDER_LOGO_PNG: &[u8] = include_bytes!("../../assets/folder.png");
 const HTTP_LOGO_PNG: &[u8] = include_bytes!("../../assets/globe.png");
 const MODIO_LOGO_PNG: &[u8] = include_bytes!("../../assets/modio-cog-blue.png");
+const NEXUS_LOGO_PNG: &[u8] = include_bytes!("../../assets/nxm-icon.png");
 const HEADER_PNG: &[u8] = include_bytes!("../../assets/header.png");
 
 pub struct App {
@@ -158,6 +159,7 @@ pub struct App {
     folder_texture_handle: Option<egui::TextureHandle>,
     http_texture_handle: Option<egui::TextureHandle>,
     modio_texture_handle: Option<egui::TextureHandle>,
+    nexus_texture_handle: Option<egui::TextureHandle>,
     header_texture_handle: Option<egui::TextureHandle>,
     last_action: Option<LastAction>,
     available_update: Option<GitHubRelease>,
@@ -269,6 +271,7 @@ impl App {
             folder_texture_handle: None,
             http_texture_handle: None,
             modio_texture_handle: None,
+            nexus_texture_handle: None,
             header_texture_handle: None,
             last_action: None,
             available_update: None,
@@ -725,6 +728,26 @@ impl App {
                                     );
 
                                     ui.ctx().load_texture("modio-logo", image, Default::default())
+                                });
+                            let mut img = egui::Image::new(texture).fit_to_exact_size([16.0, 16.0].into());
+                            if !mc.enabled {
+                                img = img.tint(Color32::LIGHT_RED);
+                            }
+                            ui.add(img);
+                        }
+                        "nexusmods" => {
+                            let texture: &egui::TextureHandle =
+                                self.nexus_texture_handle.get_or_insert_with(|| {
+                                    let image = image::load_from_memory(NEXUS_LOGO_PNG).unwrap();
+                                    let size = [image.width() as _, image.height() as _];
+                                    let image_buffer = image.to_rgba8();
+                                    let pixels = image_buffer.as_flat_samples();
+                                    let image = egui::ColorImage::from_rgba_unmultiplied(
+                                        size,
+                                        pixels.as_slice(),
+                                    );
+
+                                    ui.ctx().load_texture("nexus-logo", image, Default::default())
                                 });
                             let mut img = egui::Image::new(texture).fit_to_exact_size([16.0, 16.0].into());
                             if !mc.enabled {

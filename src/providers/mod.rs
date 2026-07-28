@@ -1,6 +1,7 @@
 pub mod file;
 pub mod http;
 pub mod modio;
+pub mod nexus;
 
 use crate::error::IntegrationError;
 use crate::state::config::ConfigWrapper;
