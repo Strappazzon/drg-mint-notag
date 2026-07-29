@@ -368,6 +368,70 @@ impl App {
                 .collect::<Vec<_>>();
 
             let ui_mod_tags = |ctx: &mut Ctx, ui: &mut Ui, info: &ModInfo| {
+                let mut mk_searchable_tag =
+                    |tag_str: &str,
+                    ui: &mut Ui,
+                    color: Option<egui::Color32>,
+                    hover_str: Option<&str>| {
+                        let text_color = if color.is_some() {
+                            Color32::BLACK
+                        } else {
+                            Color32::GRAY
+                        };
+                        let mut job = LayoutJob::default();
+                        let mut is_match = false;
+
+                        if !self.search_string.is_empty() {
+                            for (m, chunk) in
+                                find_string::FindString::new(tag_str, &self.search_string)
+                            {
+                                let background = if m {
+                                    is_match = true;
+                                    TextFormat {
+                                        background: Color32::YELLOW,
+                                        color: text_color,
+                                        ..Default::default()
+                                    }
+                                } else {
+                                    TextFormat {
+                                        color: text_color,
+                                        ..Default::default()
+                                    }
+                                };
+                                job.append(chunk, 0.0, background);
+                            }
+                        } else {
+                            job.append(
+                                tag_str,
+                                0.0,
+                                TextFormat {
+                                    color: text_color,
+                                    ..Default::default()
+                                },
+                            );
+                        }
+
+                        let button = if let Some(color) = color {
+                            egui::Button::new(job)
+                                .small()
+                                .fill(color)
+                                .stroke(egui::Stroke::NONE)
+                        } else {
+                            egui::Button::new(job).small().stroke(egui::Stroke::NONE)
+                        };
+                        let res = if let Some(hover_str) = hover_str {
+                            ui.add_enabled(false, button)
+                                .on_disabled_hover_text(hover_str)
+                        } else {
+                            ui.add_enabled(false, button)
+                        };
+
+                        if is_match && self.scroll_to_match {
+                            res.scroll_to_me(None);
+                            ctx.scroll_to_match = false;
+                        }
+                    };
+
                 if let Some(ModioTags {
                     qol,
                     gameplay,
@@ -379,73 +443,9 @@ impl App {
                     versions: _,
                 }) = info.modio_tags.as_ref()
                 {
-                    let mut mk_searchable_modio_tag =
-                        |tag_str: &str,
-                         ui: &mut Ui,
-                         color: Option<egui::Color32>,
-                         hover_str: Option<&str>| {
-                            let text_color = if color.is_some() {
-                                Color32::BLACK
-                            } else {
-                                Color32::GRAY
-                            };
-                            let mut job = LayoutJob::default();
-                            let mut is_match = false;
-                            if !self.search_string.is_empty() {
-                                for (m, chunk) in
-                                    find_string::FindString::new(tag_str, &self.search_string)
-                                {
-                                    let background = if m {
-                                        is_match = true;
-                                        TextFormat {
-                                            background: Color32::YELLOW,
-                                            color: text_color,
-                                            ..Default::default()
-                                        }
-                                    } else {
-                                        TextFormat {
-                                            color: text_color,
-                                            ..Default::default()
-                                        }
-                                    };
-                                    job.append(chunk, 0.0, background);
-                                }
-                            } else {
-                                job.append(
-                                    tag_str,
-                                    0.0,
-                                    TextFormat {
-                                        color: text_color,
-                                        ..Default::default()
-                                    },
-                                );
-                            }
-
-                            let button = if let Some(color) = color {
-                                egui::Button::new(job)
-                                    .small()
-                                    .fill(color)
-                                    .stroke(egui::Stroke::NONE)
-                            } else {
-                                egui::Button::new(job).small().stroke(egui::Stroke::NONE)
-                            };
-
-                            let res = if let Some(hover_str) = hover_str {
-                                ui.add_enabled(false, button)
-                                    .on_disabled_hover_text(hover_str)
-                            } else {
-                                ui.add_enabled(false, button)
-                            };
-
-                            if is_match && self.scroll_to_match {
-                                res.scroll_to_me(None);
-                                ctx.scroll_to_match = false;
-                            }
-                        };
-
                     match approval_status {
                         ApprovalStatus::Verified => {
-                            mk_searchable_modio_tag(
+                            mk_searchable_tag(
                                 "V",
                                 ui,
                                 Some(egui::Color32::LIGHT_GREEN),
@@ -453,7 +453,7 @@ impl App {
                             );
                         }
                         ApprovalStatus::Approved => {
-                            mk_searchable_modio_tag(
+                            mk_searchable_tag(
                                 "A",
                                 ui,
                                 Some(egui::Color32::LIGHT_BLUE),
@@ -461,7 +461,7 @@ impl App {
                             );
                         }
                         ApprovalStatus::Sandbox => {
-                            mk_searchable_modio_tag(
+                            mk_searchable_tag(
                                 "S",
                                 ui,
                                 Some(egui::Color32::LIGHT_YELLOW),
@@ -472,7 +472,7 @@ impl App {
 
                     match required_status {
                         RequiredStatus::RequiredByAll => {
-                            mk_searchable_modio_tag(
+                            mk_searchable_tag(
                                 "R",
                                 ui,
                                 Some(egui::Color32::LIGHT_RED),
@@ -483,20 +483,32 @@ impl App {
                     }
 
                     if *qol {
-                        mk_searchable_modio_tag("QoL", ui, None, None);
+                        mk_searchable_tag("QoL", ui, None, None);
                     }
                     if *gameplay {
-                        mk_searchable_modio_tag("Gameplay", ui, None, None);
+                        mk_searchable_tag("Gameplay", ui, None, None);
                     }
                     if *audio {
-                        mk_searchable_modio_tag("Audio", ui, None, None);
+                        mk_searchable_tag("Audio", ui, None, None);
                     }
                     if *visual {
-                        mk_searchable_modio_tag("Visual", ui, None, None);
+                        mk_searchable_tag("Visual", ui, None, None);
                     }
                     if *framework {
-                        mk_searchable_modio_tag("Framework", ui, None, None);
+                        mk_searchable_tag("Framework", ui, None, None);
                     }
+                }
+
+                if let Some(nexus_tags) = info.nexus_tags.as_ref() {
+                    if nexus_tags.contains_adult_content {
+                        mk_searchable_tag(
+                            "A",
+                            ui,
+                            Some(egui::Color32::LIGHT_RED),
+                            Some("Contains adult content"),
+                        );
+                    }
+                    mk_searchable_tag(&nexus_tags.category, ui, None, None);
                 }
             };
 

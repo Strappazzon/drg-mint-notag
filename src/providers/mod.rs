@@ -387,6 +387,7 @@ pub struct ModInfo {
     pub suggested_dependencies: Vec<ModSpecification>, // ModResponse
     pub modio_tags: Option<ModioTags>,                 // only available for mods from mod.io
     pub modio_id: Option<u32>,                         // only available for mods from mod.io
+    pub nexus_tags: Option<NexusTags>,                 // only available for mods from nexusmods.com
 }
 
 /// Tags from mod.io.
@@ -400,6 +401,12 @@ pub struct ModioTags {
     pub versions: BTreeSet<String>,
     pub required_status: RequiredStatus,
     pub approval_status: ApprovalStatus,
+}
+
+#[derive(Debug, Clone)]
+pub struct NexusTags {
+    pub category: String,
+    pub contains_adult_content: bool,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]

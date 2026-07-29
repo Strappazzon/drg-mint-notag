@@ -22,6 +22,17 @@ pub(crate) const NEXUS_DRG_ID: &str = "deeprockgalactic";
 const NEXUS_PROVIDER_ID: &str = "nexusmods";
 const NEXUS_API_BASE: &str = "https://api.nexusmods.com/v1";
 
+fn category_name(category_id: u32) -> &'static str {
+    match category_id {
+        2 => "Miscellaneous",
+        3 => "Utilities",
+        4 => "Audio",
+        5 => "User Interface",
+        6 => "Gameplay",
+        _ => "Unknown",
+    }
+}
+
 inventory::submit! {
     super::ProviderFactory {
         id: NEXUS_PROVIDER_ID,
@@ -48,6 +59,8 @@ struct NexusModProviderCache {
 struct CachedMod {
     name: String,
     files: Vec<CachedFile>,
+    category_id: u32,
+    contains_adult_content: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -73,6 +86,8 @@ impl ModProviderCache for NexusModProviderCache {
 #[derive(Deserialize)]
 struct ModJson {
     name: String,
+    category_id: u32,
+    contains_adult_content: bool,
 }
 
 #[derive(Deserialize)]
@@ -112,7 +127,6 @@ impl NexusProvider {
             .error_for_status()?
             .json()
             .await?;
-
         let files: FilesJson = self
             .client
             .get(format!("{NEXUS_API_BASE}/games/{NEXUS_DRG_ID}/mods/{mod_id}/files.json"))
@@ -146,12 +160,14 @@ impl ModProvider for NexusProvider {
             .await?
             .error_for_status()?;
         let validated: ValidateResponse = res.json().await?;
+
         if !validated.is_premium {
             warn!(
                 "Nexus Mods account \"{}\" is not a Premium member.",
                 validated.user_name
             );
         }
+
         Ok(())
     }
 
@@ -200,6 +216,8 @@ impl ModProvider for NexusProvider {
                 mod_id,
                 CachedMod {
                     name: mod_info.name.clone(),
+                    category_id: mod_info.category_id,
+                    contains_adult_content: mod_info.contains_adult_content,
                     files: files
                         .files
                         .iter()
@@ -224,6 +242,10 @@ impl ModProvider for NexusProvider {
             suggested_dependencies: Vec::new(),
             modio_tags: None,
             modio_id: None,
+            nexus_tags: Some(super::NexusTags {
+                category: category_name(mod_info.category_id).to_string(),
+                contains_adult_content: mod_info.contains_adult_content,
+            }),
         }))
     }
 
@@ -292,7 +314,6 @@ impl ModProvider for NexusProvider {
             .send()
             .await?
             .error_for_status()?;
-
         let size = response.content_length().unwrap_or(0);
         let mut stream = response.bytes_stream();
         let mut buf = Vec::new();
@@ -359,6 +380,8 @@ impl ModProvider for NexusProvider {
                         mod_id,
                         CachedMod {
                             name: mod_info.name,
+                            category_id: mod_info.category_id,
+                            contains_adult_content: mod_info.contains_adult_content,
                             files: files
                                 .files
                                 .into_iter()
@@ -428,6 +451,10 @@ impl ModProvider for NexusProvider {
             suggested_dependencies: Vec::new(),
             modio_tags: None,
             modio_id: None,
+            nexus_tags: Some(super::NexusTags {
+                category: category_name(cached_mod.category_id).to_string(),
+                contains_adult_content: cached_mod.contains_adult_content,
+            }),
         })
     }
 
