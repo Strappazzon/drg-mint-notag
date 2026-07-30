@@ -12,8 +12,8 @@ use tokio::sync::mpsc::Sender;
 use tracing::{info, warn};
 
 use super::{
-    BlobRef, ModInfo, ModProvider, ModProviderCache,
-    ModResolution, ModResponse, ModSpecification, ProviderCache,
+    BlobCache, BlobRef, FetchProgress, ModInfo, ModProvider, ModProviderCache,
+    ModResolution, ModResponse, ModSpecification, NexusTags, ProviderCache,
 };
 
 static RE_MOD: OnceLock<regex::Regex> = OnceLock::new();
@@ -69,7 +69,7 @@ inventory::submit! {
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]
-struct NexusModProviderCache {
+struct NexusCache {
     mods: HashMap<u32, CachedMod>,
     file_blobs: HashMap<u32, BlobRef>,
 }
@@ -92,7 +92,7 @@ struct CachedFile {
 }
 
 #[typetag::serde]
-impl ModProviderCache for NexusModProviderCache {
+impl ModProviderCache for NexusCache {
     fn new() -> Self {
         Self::default()
     }
@@ -126,12 +126,12 @@ struct FileEntry {
 }
 
 #[derive(Default)]
-struct NexusLoggingMiddleware {
+struct LoggingMiddleware {
     requests: std::sync::Arc<std::sync::atomic::AtomicUsize>,
 }
 
 #[async_trait::async_trait]
-impl Middleware for NexusLoggingMiddleware {
+impl Middleware for LoggingMiddleware {
     async fn handle(
         &self,
         req: Request,
@@ -155,7 +155,7 @@ impl Middleware for NexusLoggingMiddleware {
                 (get("X-RL-Hourly-Remaining"), get("X-RL-Hourly-Limit"))
             {
                 info!(
-                    "Nexus Mods rate limit: {}/{} hourly, {}/{} daily",
+                    "rate limit: {}/{} hourly, {}/{} daily",
                     remaining,
                     limit,
                     get("X-RL-Daily-Remaining").unwrap_or("?"),
@@ -164,7 +164,7 @@ impl Middleware for NexusLoggingMiddleware {
             }
 
             if res.status() == reqwest::StatusCode::TOO_MANY_REQUESTS {
-                warn!("Nexus Mods API requests limit reached on {:?}", path);
+                warn!("rate limit reached on {:?}", path);
             }
         }
 
@@ -180,7 +180,7 @@ pub struct NexusProvider {
 impl NexusProvider {
     fn new_provider(parameters: &HashMap<String, String>) -> Result<Arc<dyn ModProvider>> {
         let client = reqwest_middleware::ClientBuilder::new(reqwest::Client::new())
-            .with(NexusLoggingMiddleware::default())
+            .with(LoggingMiddleware::default())
             .build();
 
         Ok(Arc::new(Self {
@@ -284,7 +284,7 @@ impl ModProvider for NexusProvider {
         cache
             .write()
             .unwrap()
-            .get_mut::<NexusModProviderCache>(NEXUS_PROVIDER_ID)
+            .get_mut::<NexusCache>(NEXUS_PROVIDER_ID)
             .mods
             .insert(
                 mod_id,
@@ -318,7 +318,7 @@ impl ModProvider for NexusProvider {
             suggested_dependencies: Vec::new(),
             modio_tags: None,
             modio_id: None,
-            nexus_tags: Some(super::NexusTags {
+            nexus_tags: Some(NexusTags {
                 category: category_name(mod_info.category_id).to_string(),
                 contains_adult_content: mod_info.contains_adult_content,
             }),
@@ -330,8 +330,8 @@ impl ModProvider for NexusProvider {
         res: &ModResolution,
         update: bool,
         cache: ProviderCache,
-        blob_cache: &super::BlobCache,
-        tx: Option<Sender<super::FetchProgress>>,
+        blob_cache: &BlobCache,
+        tx: Option<Sender<FetchProgress>>,
     ) -> Result<PathBuf> {
         let parsed = url::Url::parse(&res.url).context("invalid mod resolution URL")?;
         let mod_id: u32 = re_mod()
@@ -351,13 +351,13 @@ impl ModProvider for NexusProvider {
             let cached_path = cache
                 .read()
                 .unwrap()
-                .get::<NexusModProviderCache>(NEXUS_PROVIDER_ID)
+                .get::<NexusCache>(NEXUS_PROVIDER_ID)
                 .and_then(|c| c.file_blobs.get(&file_id))
                 .and_then(|blob| blob_cache.get_path(blob));
 
             if let Some(path) = cached_path {
                 if let Some(tx) = &tx {
-                    tx.send(super::FetchProgress::Complete {
+                    tx.send(FetchProgress::Complete {
                         resolution: res.clone(),
                     })
                     .await
@@ -402,7 +402,7 @@ impl ModProvider for NexusProvider {
             buf.extend_from_slice(&chunk);
 
             if let Some(tx) = &tx {
-                tx.send(super::FetchProgress::Progress {
+                tx.send(FetchProgress::Progress {
                     resolution: res.clone(),
                     progress: downloaded,
                     size,
@@ -413,7 +413,7 @@ impl ModProvider for NexusProvider {
         }
 
         if let Some(tx) = &tx {
-            tx.send(super::FetchProgress::Complete {
+            tx.send(FetchProgress::Complete {
                 resolution: res.clone(),
             })
             .await
@@ -428,7 +428,7 @@ impl ModProvider for NexusProvider {
         cache
             .write()
             .unwrap()
-            .get_mut::<NexusModProviderCache>(NEXUS_PROVIDER_ID)
+            .get_mut::<NexusCache>(NEXUS_PROVIDER_ID)
             .file_blobs
             .insert(file_id, blob_ref);
 
@@ -439,7 +439,7 @@ impl ModProvider for NexusProvider {
         let mod_ids: Vec<u32> = cache
             .read()
             .unwrap()
-            .get::<NexusModProviderCache>(NEXUS_PROVIDER_ID)
+            .get::<NexusCache>(NEXUS_PROVIDER_ID)
             .map(|c| c.mods.keys().copied().collect())
             .unwrap_or_default();
 
@@ -450,7 +450,7 @@ impl ModProvider for NexusProvider {
                 cache
                     .write()
                     .unwrap()
-                    .get_mut::<NexusModProviderCache>(NEXUS_PROVIDER_ID)
+                    .get_mut::<NexusCache>(NEXUS_PROVIDER_ID)
                     .mods
                     .insert(
                         mod_id,
@@ -497,7 +497,7 @@ impl ModProvider for NexusProvider {
             .find(|(k, _)| k == "file_id")
             .and_then(|(_, v)| v.parse().ok());
         let guard = cache.read().unwrap();
-        let nexus_cache = guard.get::<NexusModProviderCache>(NEXUS_PROVIDER_ID)?;
+        let nexus_cache = guard.get::<NexusCache>(NEXUS_PROVIDER_ID)?;
         let cached_mod = nexus_cache.mods.get(&mod_id)?;
         let unpinned_url = format!("https://www.nexusmods.com/{NEXUS_DRG_ID}/mods/{mod_id}");
         let versions = cached_mod
@@ -527,7 +527,7 @@ impl ModProvider for NexusProvider {
             suggested_dependencies: Vec::new(),
             modio_tags: None,
             modio_id: None,
-            nexus_tags: Some(super::NexusTags {
+            nexus_tags: Some(NexusTags {
                 category: category_name(cached_mod.category_id).to_string(),
                 contains_adult_content: cached_mod.contains_adult_content,
             }),
@@ -556,7 +556,7 @@ impl ModProvider for NexusProvider {
             .parse()
             .ok()?;
         let guard = cache.read().unwrap();
-        let nexus_cache = guard.get::<NexusModProviderCache>(NEXUS_PROVIDER_ID)?;
+        let nexus_cache = guard.get::<NexusCache>(NEXUS_PROVIDER_ID)?;
         let cached_mod = nexus_cache.mods.get(&mod_id)?;
         let file = cached_mod.files.iter().find(|f| f.file_id == id)?;
 
