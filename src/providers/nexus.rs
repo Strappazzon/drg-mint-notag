@@ -33,6 +33,22 @@ fn category_name(category_id: u32) -> &'static str {
     }
 }
 
+fn pick_default_file<I: Iterator<Item = (u32, bool, i64)>>(files: I) -> Option<u32> {
+    let mut best_main: Option<(u32, i64)> = None;
+    let mut best_any: Option<(u32, i64)> = None;
+
+    for (file_id, is_main, uploaded_timestamp) in files {
+        if best_any.map_or(true, |(_, ts)| uploaded_timestamp > ts) {
+            best_any = Some((file_id, uploaded_timestamp));
+        }
+        if is_main && best_main.map_or(true, |(_, ts)| uploaded_timestamp > ts) {
+            best_main = Some((file_id, uploaded_timestamp));
+        }
+    }
+
+    best_main.or(best_any).map(|(file_id, _)| file_id)
+}
+
 inventory::submit! {
     super::ProviderFactory {
         id: NEXUS_PROVIDER_ID,
@@ -68,6 +84,8 @@ struct CachedFile {
     file_id: u32,
     is_primary: bool,
     version: String,
+    category_name: String,
+    uploaded_timestamp: i64,
 }
 
 #[typetag::serde]
@@ -100,6 +118,8 @@ struct FileEntry {
     file_id: u32,
     is_primary: bool,
     version: String,
+    category_name: Option<String>,
+    uploaded_timestamp: i64,
 }
 
 pub struct NexusProvider {
@@ -198,13 +218,13 @@ impl ModProvider for NexusProvider {
             .collect();
         let resolution_file_id = match file_id {
             Some(id) => id,
-            None => files
-                .files
-                .iter()
-                .find(|f| f.is_primary)
-                .or_else(|| files.files.first())
-                .context("mod has no files")?
-                .file_id,
+            None => pick_default_file(
+                files
+                    .files
+                    .iter()
+                    .map(|f| (f.file_id, f.category_name.as_deref() == Some("MAIN"), f.uploaded_timestamp)),
+            )
+            .context("mod has no files")?,
         };
 
         cache
@@ -225,6 +245,8 @@ impl ModProvider for NexusProvider {
                             file_id: f.file_id,
                             is_primary: f.is_primary,
                             version: f.version.clone(),
+                            category_name: f.category_name.clone().unwrap_or_else(|| "UNKNOWN".to_string()),
+                            uploaded_timestamp: f.uploaded_timestamp,
                         })
                         .collect(),
                 },
@@ -389,6 +411,8 @@ impl ModProvider for NexusProvider {
                                     file_id: f.file_id,
                                     is_primary: f.is_primary,
                                     version: f.version,
+                                    category_name: f.category_name.unwrap_or_else(|| "UNKNOWN".to_string()),
+                                    uploaded_timestamp: f.uploaded_timestamp,
                                 })
                                 .collect(),
                         },
@@ -399,7 +423,7 @@ impl ModProvider for NexusProvider {
             .await;
 
             if let Err(e) = result {
-                warn!("failed to update cache for nexus mod {mod_id}: {e:#}");
+                warn!("failed to update cache for Nexus Mods mod {mod_id}: {e:#}");
             }
         }
 
@@ -429,14 +453,12 @@ impl ModProvider for NexusProvider {
             .collect();
         let resolution_file_id = match file_id {
             Some(id) => id,
-            None => {
+            None => pick_default_file(
                 cached_mod
                     .files
                     .iter()
-                    .find(|f| f.is_primary)
-                    .or_else(|| cached_mod.files.first())?
-                    .file_id
-            }
+                    .map(|f| (f.file_id, f.category_name == "MAIN", f.uploaded_timestamp)),
+            )?,
         };
 
         Some(ModInfo {
@@ -466,28 +488,24 @@ impl ModProvider for NexusProvider {
 
     fn get_version_name(&self, spec: &ModSpecification, cache: ProviderCache) -> Option<String> {
         let parsed = url::Url::parse(&spec.url).ok()?;
+        let file_id: Option<u32> = parsed
+            .query_pairs()
+            .find(|(k, _)| k == "file_id")
+            .and_then(|(_, v)| v.parse().ok());
+        let Some(id) = file_id else {
+            return Some("latest".to_string());
+        };
         let mod_id: u32 = re_mod()
             .captures(&spec.url)?
             .name("mod_id")?
             .as_str()
             .parse()
             .ok()?;
-        let file_id: Option<u32> = parsed
-            .query_pairs()
-            .find(|(k, _)| k == "file_id")
-            .and_then(|(_, v)| v.parse().ok());
         let guard = cache.read().unwrap();
         let nexus_cache = guard.get::<NexusModProviderCache>(NEXUS_PROVIDER_ID)?;
         let cached_mod = nexus_cache.mods.get(&mod_id)?;
-        let file = match file_id {
-            Some(id) => cached_mod.files.iter().find(|f| f.file_id == id)?,
-            None => cached_mod
-                .files
-                .iter()
-                .find(|f| f.is_primary)
-                .or_else(|| cached_mod.files.first())?,
-        };
+        let file = cached_mod.files.iter().find(|f| f.file_id == id)?;
 
-        Some(file.version.clone())
+        Some(format!("{} - {}", file.category_name, file.version))
     }
 }
