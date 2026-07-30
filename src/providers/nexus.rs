@@ -4,9 +4,12 @@ use std::sync::{Arc, OnceLock};
 
 use anyhow::{Context, Result};
 use futures::StreamExt;
+use reqwest::{Request, Response};
+use reqwest_middleware::{Middleware, Next};
 use serde::{Deserialize, Serialize};
+use task_local_extensions::Extensions;
 use tokio::sync::mpsc::Sender;
-use tracing::warn;
+use tracing::{info, warn};
 
 use super::{
     BlobRef, ModInfo, ModProvider, ModProviderCache,
@@ -122,15 +125,66 @@ struct FileEntry {
     uploaded_timestamp: i64,
 }
 
+#[derive(Default)]
+struct NexusLoggingMiddleware {
+    requests: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+}
+
+#[async_trait::async_trait]
+impl Middleware for NexusLoggingMiddleware {
+    async fn handle(
+        &self,
+        req: Request,
+        extensions: &mut Extensions,
+        next: Next<'_>,
+    ) -> reqwest_middleware::Result<Response> {
+        let count = self
+            .requests
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let path = req.url().path().to_string();
+
+        info!("request started {} {:?}", count, path);
+
+        let res = next.run(req, extensions).await;
+
+        if let Ok(res) = &res {
+            let headers = res.headers();
+            let get = |name: &str| headers.get(name).and_then(|v| v.to_str().ok());
+
+            if let (Some(remaining), Some(limit)) =
+                (get("X-RL-Hourly-Remaining"), get("X-RL-Hourly-Limit"))
+            {
+                info!(
+                    "Nexus Mods rate limit: {}/{} hourly, {}/{} daily",
+                    remaining,
+                    limit,
+                    get("X-RL-Daily-Remaining").unwrap_or("?"),
+                    get("X-RL-Daily-Limit").unwrap_or("?"),
+                );
+            }
+
+            if res.status() == reqwest::StatusCode::TOO_MANY_REQUESTS {
+                warn!("Nexus Mods API requests limit reached on {:?}", path);
+            }
+        }
+
+        res
+    }
+}
+
 pub struct NexusProvider {
-    client: reqwest::Client,
+    client: reqwest_middleware::ClientWithMiddleware,
     api_key: String,
 }
 
 impl NexusProvider {
     fn new_provider(parameters: &HashMap<String, String>) -> Result<Arc<dyn ModProvider>> {
+        let client = reqwest_middleware::ClientBuilder::new(reqwest::Client::new())
+            .with(NexusLoggingMiddleware::default())
+            .build();
+
         Ok(Arc::new(Self {
-            client: reqwest::Client::new(),
+            client,
             api_key: parameters
                 .get("api_key")
                 .context("missing parameter api_key")?
