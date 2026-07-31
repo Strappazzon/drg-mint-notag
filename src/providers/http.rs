@@ -21,7 +21,7 @@ inventory::submit! {
                 .captures(url)
                 .and_then(|c| c.name("hostname"))
                 .map_or(false, |h| {
-                    !["mod.io", "drg.mod.io", "drg.old.mod.io"].contains(&h.as_str())
+                    !["mod.io", "drg.mod.io", "drg.old.mod.io", "www.nexusmods.com", "nexusmods.com"].contains(&h.as_str())
                 })
         },
         parameters: &[],
@@ -92,6 +92,8 @@ impl ModProvider for HttpProvider {
             suggested_dependencies: vec![],
             modio_tags: None,
             modio_id: None,
+            nexus_id: None,
+            nexus_tags: None,
         }))
     }
 
@@ -202,6 +204,8 @@ impl ModProvider for HttpProvider {
             suggested_dependencies: vec![],
             modio_tags: None,
             modio_id: None,
+            nexus_id: None,
+            nexus_tags: None,
         })
     }
 

@@ -25,6 +25,7 @@ use crate::{
     state::ModConfig,
 };
 
+use super::DetailKey;
 use super::SelfUpdateProgress;
 use super::{
     request_counter::{RequestCounter, RequestID},
@@ -751,15 +752,29 @@ async fn self_update_async(
 #[derive(Debug)]
 pub struct FetchModDetails {
     rid: RequestID,
-    modio_id: u32,
+    key: DetailKey,
     result: Result<ModDetails>,
+}
+
+pub enum ModDetailsSource {
+    Modio { oauth_token: String, modio_id: u32 },
+    Nexus { api_key: String, mod_id: u32 },
+}
+
+#[derive(Debug)]
+pub struct ModDetailsVersion {
+    pub version: Option<String>,
+    pub changelog: Option<String>,
 }
 
 #[derive(Debug)]
 pub struct ModDetails {
-    pub r#mod: modio::mods::Mod,
-    pub versions: Vec<modio::files::File>,
+    pub name: String,
+    pub uploader: String,
+    pub description: Option<String>,
     pub thumbnail: Vec<u8>,
+    pub versions: Vec<ModDetailsVersion>,
+    pub download_url: Option<String>,
 }
 
 impl FetchModDetails {
@@ -767,24 +782,26 @@ impl FetchModDetails {
         rc: &mut RequestCounter,
         ctx: &egui::Context,
         tx: Sender<Message>,
-        oauth_token: &str,
-        modio_id: u32,
+        key: DetailKey,
+        source: ModDetailsSource,
     ) -> MessageHandle<()> {
         let rid = rc.next();
         let ctx = ctx.clone();
-        let oauth_token = oauth_token.to_string();
 
         MessageHandle {
             rid,
             handle: tokio::task::spawn(async move {
-                let result = fetch_modio_mod_details(oauth_token, modio_id).await;
-                tx.send(Message::FetchModDetails(FetchModDetails {
-                    rid,
-                    result,
-                    modio_id,
-                }))
-                .await
-                .unwrap();
+                let result = match source {
+                    ModDetailsSource::Modio { oauth_token, modio_id } => {
+                        fetch_modio_mod_details(oauth_token, modio_id).await
+                    }
+                    ModDetailsSource::Nexus { api_key, mod_id } => {
+                        fetch_nexus_mod_details(api_key, mod_id).await
+                    }
+                };
+                tx.send(Message::FetchModDetails(FetchModDetails { rid, key, result }))
+                    .await
+                    .unwrap();
                 ctx.request_repaint();
             }),
             state: (),
@@ -794,26 +811,26 @@ impl FetchModDetails {
     fn receive(self, app: &mut App) {
         let mut to_remove = None;
 
-        if let Some(req) = app.fetch_mod_details_rid.get(&self.modio_id)
+        if let Some(req) = app.fetch_mod_details_rid.get(&self.key)
             && req.rid == self.rid
         {
             match self.result {
                 Ok(mod_details) => {
                     info!("fetch mod details successful");
-                    app.mod_details.insert(mod_details.r#mod.id, mod_details);
+                    app.mod_details.insert(self.key, mod_details);
                     app.last_action = Some(LastAction::success("Fetched mod details".to_string()));
                 }
                 Err(e) => {
                     error!("fetch mod details failed");
                     error!("{:#?}", e);
-                    to_remove = Some(self.modio_id);
+                    to_remove = Some(self.key);
                     app.last_action = Some(LastAction::failure("Failed to fetch mod details".to_string()));
                 }
             }
         }
 
-        if let Some(id) = to_remove {
-            app.fetch_mod_details_rid.remove(&id);
+        if let Some(key) = to_remove {
+            app.fetch_mod_details_rid.remove(&key);
         }
     }
 }
@@ -827,7 +844,6 @@ async fn fetch_modio_mod_details(oauth_token: String, modio_id: u32) -> Result<M
         .with::<LoggingMiddleware>(Default::default())
         .build();
     let modio = Modio::new(credentials, client.clone())?;
-
     let r#mod = modio
         .game(MODIO_DRG_ID)
         .mods()
@@ -835,11 +851,9 @@ async fn fetch_modio_mod_details(oauth_token: String, modio_id: u32) -> Result<M
         .first()
         .await?
         .with_context(|| format!("mod {modio_id} not found"))?;
-
     let mod_ref = modio.mod_(MODIO_DRG_ID, modio_id);
     let filter = with_limit(10).order_by(modio::user::filters::files::Version::desc());
     let versions = mod_ref.clone().files().search(filter).first_page().await?;
-
     let thumbnail = client
         .get(r#mod.logo.thumb_320x180.clone())
         .send()
@@ -849,8 +863,98 @@ async fn fetch_modio_mod_details(oauth_token: String, modio_id: u32) -> Result<M
         .to_vec();
 
     Ok(ModDetails {
-        r#mod,
-        versions,
+        name: r#mod.name.clone(),
+        uploader: r#mod.submitted_by.username.clone(),
+        description: r#mod.description_plaintext.clone(),
         thumbnail,
+        versions: versions
+            .into_iter()
+            .map(|f| ModDetailsVersion {
+                version: f.version,
+                changelog: f.changelog,
+            })
+            .collect(),
+        download_url: r#mod.modfile.as_ref().map(|f| f.download.binary_url.to_string()),
+    })
+}
+
+async fn fetch_nexus_mod_details(api_key: String, mod_id: u32) -> Result<ModDetails> {
+    use crate::providers::nexus::{LoggingMiddleware, NEXUS_API_BASE, NEXUS_DRG_ID};
+
+    #[derive(serde::Deserialize)]
+    struct ModJson {
+        name: String,
+        summary: String,
+        picture_url: String,
+        uploaded_by: String,
+    }
+
+    #[derive(serde::Deserialize)]
+    struct FilesJson {
+        files: Vec<FileEntry>,
+    }
+
+    #[derive(serde::Deserialize)]
+    struct FileEntry {
+        version: String,
+    }
+
+    let client = reqwest_middleware::ClientBuilder::new(reqwest::Client::new())
+        .with::<LoggingMiddleware>(Default::default())
+        .build();
+    let mod_info: ModJson = client
+        .get(format!("{NEXUS_API_BASE}/games/{NEXUS_DRG_ID}/mods/{mod_id}.json"))
+        .header("apikey", &api_key)
+        .send()
+        .await?
+        .error_for_status()?
+        .json()
+        .await?;
+    let files: FilesJson = client
+        .get(format!("{NEXUS_API_BASE}/games/{NEXUS_DRG_ID}/mods/{mod_id}/files.json"))
+        .header("apikey", &api_key)
+        .send()
+        .await?
+        .error_for_status()?
+        .json()
+        .await?;
+    let changelogs: HashMap<String, Vec<String>> = client
+        .get(format!("{NEXUS_API_BASE}/games/{NEXUS_DRG_ID}/mods/{mod_id}/changelogs.json"))
+        .header("apikey", &api_key)
+        .send()
+        .await?
+        .error_for_status()?
+        .json()
+        .await?;
+    let thumbnail_url = mod_info
+        .picture_url
+        .replacen("/images/", "/images/thumbnails/", 1);
+    let thumbnail = client
+        .get(&thumbnail_url)
+        .send()
+        .await?
+        .error_for_status()?
+        .bytes()
+        .await?
+        .to_vec();
+    let versions = files
+        .files
+        .into_iter()
+        .map(|f| {
+            let changelog = changelogs.get(&f.version).map(|lines| lines.join("\n"));
+            ModDetailsVersion {
+                version: Some(f.version),
+                changelog,
+            }
+        })
+        .collect();
+
+    Ok(ModDetails {
+        name: mod_info.name,
+        uploader: mod_info.uploaded_by,
+        description: Some(mod_info.summary),
+        thumbnail,
+        versions,
+        download_url: None,
     })
 }
