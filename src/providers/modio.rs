@@ -499,6 +499,7 @@ impl<M: DrgModio + Send + Sync> ModProvider for ModioProvider<M> {
                 suggested_dependencies: deps,
                 modio_tags: Some(process_modio_tags(&mod_.tags)),
                 modio_id: Some(mod_id),
+                nexus_id: None,
                 nexus_tags: None,
             }))
         } else if let Some(mod_id) = captures.name("mod_id") {
@@ -811,6 +812,7 @@ impl<M: DrgModio + Send + Sync> ModProvider for ModioProvider<M> {
             suggested_dependencies: deps,
             modio_tags: Some(process_modio_tags(&mod_.tags)),
             modio_id: Some(mod_id),
+            nexus_id: None,
             nexus_tags: None,
         })
     }

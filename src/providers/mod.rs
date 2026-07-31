@@ -387,6 +387,7 @@ pub struct ModInfo {
     pub suggested_dependencies: Vec<ModSpecification>, // ModResponse
     pub modio_tags: Option<ModioTags>,                 // only available for mods from mod.io
     pub modio_id: Option<u32>,                         // only available for mods from mod.io
+    pub nexus_id: Option<u32>,                         // only available for mods from nexusmods.com
     pub nexus_tags: Option<NexusTags>,                 // only available for mods from nexusmods.com
 }
 

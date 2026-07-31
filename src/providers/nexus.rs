@@ -23,7 +23,7 @@ fn re_mod() -> &'static regex::Regex {
 
 pub(crate) const NEXUS_DRG_ID: &str = "deeprockgalactic";
 const NEXUS_PROVIDER_ID: &str = "nexusmods";
-const NEXUS_API_BASE: &str = "https://api.nexusmods.com/v1";
+pub(crate) const NEXUS_API_BASE: &str = "https://api.nexusmods.com/v1";
 
 fn category_name(category_id: u32) -> &'static str {
     match category_id {
@@ -80,6 +80,9 @@ struct CachedMod {
     files: Vec<CachedFile>,
     category_id: u32,
     contains_adult_content: bool,
+    description: String,
+    uploaded_by: String,
+    picture_url: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -109,6 +112,9 @@ struct ModJson {
     name: String,
     category_id: u32,
     contains_adult_content: bool,
+    description: String,
+    uploaded_by: String,
+    picture_url: String,
 }
 
 #[derive(Deserialize)]
@@ -126,8 +132,8 @@ struct FileEntry {
 }
 
 #[derive(Default)]
-struct LoggingMiddleware {
-    requests: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+pub(crate) struct LoggingMiddleware {
+    pub(crate) requests: std::sync::Arc<std::sync::atomic::AtomicUsize>,
 }
 
 #[async_trait::async_trait]
@@ -292,6 +298,9 @@ impl ModProvider for NexusProvider {
                     name: mod_info.name.clone(),
                     category_id: mod_info.category_id,
                     contains_adult_content: mod_info.contains_adult_content,
+                    description: mod_info.description.clone(),
+                    uploaded_by: mod_info.uploaded_by.clone(),
+                    picture_url: mod_info.picture_url.clone(),
                     files: files
                         .files
                         .iter()
@@ -316,6 +325,7 @@ impl ModProvider for NexusProvider {
             )),
             suggested_require: false,
             suggested_dependencies: Vec::new(),
+            nexus_id: Some(mod_id),
             modio_tags: None,
             modio_id: None,
             nexus_tags: Some(NexusTags {
@@ -458,6 +468,9 @@ impl ModProvider for NexusProvider {
                             name: mod_info.name,
                             category_id: mod_info.category_id,
                             contains_adult_content: mod_info.contains_adult_content,
+                            description: mod_info.description,
+                            uploaded_by: mod_info.uploaded_by,
+                            picture_url: mod_info.picture_url,
                             files: files
                                 .files
                                 .into_iter()
@@ -525,6 +538,7 @@ impl ModProvider for NexusProvider {
             ),
             suggested_require: false,
             suggested_dependencies: Vec::new(),
+            nexus_id: Some(mod_id),
             modio_tags: None,
             modio_id: None,
             nexus_tags: Some(NexusTags {

@@ -49,7 +49,6 @@ use find_string::FindString;
 use message::MessageHandle;
 use request_counter::{RequestCounter, RequestID};
 
-use self::message::ModDetails;
 use self::toggle_switch::toggle_switch;
 
 pub fn gui(dirs: Dirs, args: Option<Vec<String>>) -> Result<()> {
@@ -175,10 +174,10 @@ pub struct App {
     self_update_rid: Option<MessageHandle<SelfUpdateProgress>>,
     original_exe_path: Option<PathBuf>,
     pending_delete: Option<usize>,
-    detailed_mod_info_windows: HashMap<u32, WindowDetailedModInfo>,
-    mod_details: HashMap<u32, ModDetails>,
-    fetch_mod_details_rid: HashMap<u32, MessageHandle<()>>,
-    mod_details_thumbnail_texture_handle: HashMap<u32, egui::TextureHandle>,
+    detailed_mod_info_windows: HashMap<DetailKey, WindowDetailedModInfo>,
+    mod_details: HashMap<DetailKey, message::ModDetails>,
+    fetch_mod_details_rid: HashMap<DetailKey, MessageHandle<()>>,
+    mod_details_thumbnail_texture_handle: HashMap<DetailKey, egui::TextureHandle>,
 }
 
 #[derive(Default)]
@@ -626,22 +625,57 @@ impl App {
                         .on_hover_text_at_pointer("Load Priority\nIn case of asset conflict, mods with higher priority take precedence.\nCan have duplicate values.",);
                     });
 
-                    if let Some(modio_id) = info.modio_id
-                        && let Some(modio_provider_params) = self.state.config.provider_parameters.get("modio")
-                        && let Some(oauth_token) = modio_provider_params.get("oauth")
+                    let detail_source = if let Some(modio_id) = info.modio_id {
+                        self.state
+                            .config
+                            .provider_parameters
+                            .get("modio")
+                            .and_then(|p| p.get("oauth"))
+                            .map(|oauth_token| {
+                                (
+                                    DetailKey { provider: info.provider, id: modio_id },
+                                    message::ModDetailsSource::Modio {
+                                        oauth_token: oauth_token.clone(),
+                                        modio_id,
+                                    },
+                                )
+                            })
+                    } else if let Some(nexus_id) = info.nexus_id {
+                        self.state
+                            .config
+                            .provider_parameters
+                            .get("nexusmods")
+                            .and_then(|p| p.get("api_key"))
+                            .map(|api_key| {
+                                (
+                                    DetailKey { provider: info.provider, id: nexus_id },
+                                    message::ModDetailsSource::Nexus {
+                                        api_key: api_key.clone(),
+                                        mod_id: nexus_id,
+                                    },
+                                )
+                            })
+                    } else {
+                        None
+                    };
+
+                    if let Some((key, source)) = detail_source
                         && ui
                             .button("\u{2139}")
                             .on_hover_text_at_pointer("View details")
                             .clicked()
                     {
-                        self.detailed_mod_info_windows.insert(modio_id, WindowDetailedModInfo { info: info.clone() });
-                        self.fetch_mod_details_rid.insert(modio_id, message::FetchModDetails::send(
-                            &mut self.request_counter,
-                            ui.ctx(),
-                            self.tx.clone(),
-                            oauth_token,
-                            modio_id
-                        ));
+                        self.detailed_mod_info_windows.insert(key, WindowDetailedModInfo { info: info.clone() });
+                        self.fetch_mod_details_rid.insert(
+                            key,
+                            message::FetchModDetails::send(
+                                &mut self.request_counter,
+                                ui.ctx(),
+                                self.tx.clone(),
+                                key,
+                                source,
+                            ),
+                        );
                     }
 
                     if ui
@@ -1978,10 +2012,10 @@ impl App {
         }
     }
 
-    fn show_detailed_mod_info(&mut self, ctx: &egui::Context, modio_id: u32) {
+    fn show_detailed_mod_info(&mut self, ctx: &egui::Context, key: DetailKey) {
         let mut to_remove = Vec::new();
 
-        if let Some(WindowDetailedModInfo { info }) = self.detailed_mod_info_windows.get(&modio_id) {
+        if let Some(WindowDetailedModInfo { info }) = self.detailed_mod_info_windows.get(&key) {
             let mut open = true;
 
             egui::Window::new(&info.name)
@@ -1990,23 +2024,24 @@ impl App {
                 .movable(true)
                 // https://github.com/trumank/mint/pull/84#issuecomment-1688124034
                 .resizable(false)
-                .show(ctx, |ui| self.show_detailed_mod_info_inner(ui, modio_id));
+                .default_width(600.0)
+                .show(ctx, |ui| self.show_detailed_mod_info_inner(ui, key));
 
             if !open {
-                to_remove.push(modio_id);
+                to_remove.push(key);
             }
         }
 
-        for id in to_remove {
-            self.detailed_mod_info_windows.remove(&id);
-            self.mod_details.remove(&id);
-            self.fetch_mod_details_rid.remove(&id);
-            self.mod_details_thumbnail_texture_handle.remove(&id);
+        for k in to_remove {
+            self.detailed_mod_info_windows.remove(&k);
+            self.mod_details.remove(&k);
+            self.fetch_mod_details_rid.remove(&k);
+            self.mod_details_thumbnail_texture_handle.remove(&k);
         }
     }
 
-    fn show_detailed_mod_info_inner(&mut self, ui: &mut egui::Ui, modio_id: u32) {
-        if let Some(mod_details) = &self.mod_details.get(&modio_id) {
+    fn show_detailed_mod_info_inner(&mut self, ui: &mut egui::Ui, key: DetailKey) {
+        if let Some(mod_details) = &self.mod_details.get(&key) {
             let scroll_area_height = (ui.available_height() - 60.0).clamp(0.0, f32::INFINITY);
 
             egui::ScrollArea::vertical()
@@ -2017,10 +2052,10 @@ impl App {
                 .show(ui, |ui| {
                     let texture: &egui::TextureHandle = self
                         .mod_details_thumbnail_texture_handle
-                        .entry(modio_id)
+                        .entry(key)
                         .or_insert_with(|| {
                             ui.ctx().load_texture(
-                                format!("{} image", mod_details.r#mod.name),
+                                format!("{} image", mod_details.name),
                                 {
                                     let image =
                                         image::load_from_memory(&mod_details.thumbnail).unwrap();
@@ -2037,11 +2072,11 @@ impl App {
                     });
 
                     ui.heading("Uploader");
-                    ui.label(&mod_details.r#mod.submitted_by.username);
+                    ui.label(&mod_details.uploader);
                     ui.add_space(10.0);
 
                     ui.heading("Description");
-                    if let Some(desc) = &mod_details.r#mod.description_plaintext {
+                    if let Some(desc) = &mod_details.description {
                         ui.label(desc);
                     } else {
                         ui.label("No description provided.");
@@ -2058,13 +2093,13 @@ impl App {
                         .striped(true)
                         .num_columns(2)
                         .show(ui, |ui| {
-                            mod_details.versions.iter().for_each(|file| {
-                                if let Some(version) = &file.version {
+                            mod_details.versions.iter().for_each(|v| {
+                                if let Some(version) = &v.version {
                                     ui.label(version);
                                 } else {
                                     ui.label("Unknown version");
                                 }
-                                if let Some(changelog) = &file.changelog {
+                                if let Some(changelog) = &v.changelog {
                                     ui.add(Label::new(changelog).wrap(true));
                                 } else {
                                     ui.label("N/A");
@@ -2072,26 +2107,17 @@ impl App {
                                 ui.end_row();
                             });
                         });
-                    ui.add_space(10.0);
 
-                    ui.heading("Files");
-                    if let Some(file) = &mod_details.r#mod.modfile {
-                        ui.horizontal(|ui| {
-                            if let Some(version) = &file.version {
-                                ui.label(version);
-                            } else {
-                                ui.label("Unknown version");
-                            }
-                            ui.hyperlink(&file.download.binary_url);
-                        });
-                    } else {
-                        ui.label("No files provided.");
+                    if let Some(download_url) = &mod_details.download_url {
+                        ui.add_space(10.0);
+                        ui.heading("Files");
+                        ui.hyperlink(download_url);
                     }
                 });
         } else {
             ui.horizontal(|ui| {
                 ui.spinner();
-                ui.label("Fetching mod details from mod.io...");
+                ui.label("Fetching mod details...");
             });
         }
     }
@@ -2230,6 +2256,12 @@ struct WindowDetailedModInfo {
     info: ModInfo,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct DetailKey {
+    provider: &'static str,
+    id: u32,
+}
+
 impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         if self.needs_restart
@@ -2278,14 +2310,14 @@ impl eframe::App for App {
         self.show_lints_toggle(ctx);
         self.show_lint_report(ctx);
 
-        let modio_ids = self
+        let detail_keys = self
             .detailed_mod_info_windows
             .keys()
             .copied()
             .collect::<Vec<_>>();
 
-        for modio_id in modio_ids {
-            self.show_detailed_mod_info(ctx, modio_id);
+        for key in detail_keys {
+            self.show_detailed_mod_info(ctx, key);
         }
 
         egui::TopBottomPanel::bottom("bottom_panel").show(ctx, |ui| {
