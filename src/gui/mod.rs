@@ -169,9 +169,6 @@ pub struct App {
     lints_toggle_window: Option<WindowLintsToggle>,
     lint_options: LintOptions,
     update_cmark_cache: CommonMarkCache,
-    needs_restart: bool,
-    self_update_rid: Option<MessageHandle<SelfUpdateProgress>>,
-    original_exe_path: Option<PathBuf>,
     pending_delete: Option<usize>,
     detailed_mod_info_windows: HashMap<u32, WindowDetailedModInfo>,
     mod_details: HashMap<u32, ModDetails>,
@@ -280,9 +277,6 @@ impl App {
             lints_toggle_window: None,
             lint_options: LintOptions::default(),
             update_cmark_cache: Default::default(),
-            needs_restart: false,
-            self_update_rid: None,
-            original_exe_path: None,
             pending_delete: None,
             detailed_mod_info_windows: HashMap::default(),
             mod_details: HashMap::default(),
@@ -1017,65 +1011,29 @@ impl App {
                             ui.allocate_space(ui.available_size());
                         })
                 });
-            if let Some(MessageHandle { state, .. }) = &self.self_update_rid {
-                egui::Window::new("Update Progress")
-                    .collapsible(false)
-                    .anchor(Align2::CENTER_CENTER, Vec2::ZERO)
-                    .resizable(false)
-                    .show(ctx, |ui| {
-                        ui.with_layout(egui::Layout::top_down_justified(Align::Center), |ui| {
-                            match state {
-                                SelfUpdateProgress::Pending => {
-                                    ui.add(egui::ProgressBar::new(0.0).show_percentage());
-                                }
-                                SelfUpdateProgress::Progress { progress, size } => {
-                                    ui.add(
-                                        egui::ProgressBar::new(*progress as f32 / *size as f32)
-                                            .show_percentage(),
-                                    );
-                                }
-                                SelfUpdateProgress::Complete => {
-                                    ui.add(egui::ProgressBar::new(1.0).show_percentage());
-                                    ui.label(
-                                        egui::RichText::new("Update successful.")
-                                            .color(Color32::LIGHT_GREEN),
-                                    );
-
-                                    if ui.button("Restart").clicked() {
-                                        self.needs_restart = true;
-                                    }
-                                }
-                            };
-                        });
+            egui::Window::new(format!("Update Available: {}", update.tag_name))
+                .collapsible(false)
+                .anchor(Align2::CENTER_CENTER, Vec2::ZERO)
+                .resizable(false)
+                .show(ctx, |ui| {
+                    CommonMarkViewer::new("available-update")
+                        .max_image_width(Some(512))
+                        .show(ui, &mut self.update_cmark_cache, &update.body);
+                    ui.with_layout(egui::Layout::right_to_left(Align::TOP), |ui| {
+                        if ui.button("Close").clicked() {
+                            self.show_update_time = None;
+                        }
+                        if ui.button("Download").clicked() {
+                            ui.ctx().output_mut(|o| {
+                                o.open_url = Some(egui::output::OpenUrl {
+                                    url: update.html_url.clone(),
+                                    new_tab: true,
+                                });
+                            });
+                            self.show_update_time = None;
+                        }
                     });
-            } else {
-                egui::Window::new(format!("Update Available: {}", update.tag_name))
-                    .collapsible(false)
-                    .anchor(Align2::CENTER_CENTER, Vec2::ZERO)
-                    .resizable(false)
-                    .show(ctx, |ui| {
-                        CommonMarkViewer::new("available-update")
-                            .max_image_width(Some(512))
-                            .show(ui, &mut self.update_cmark_cache, &update.body);
-                        ui.with_layout(egui::Layout::right_to_left(Align::TOP), |ui| {
-                            if ui
-                                .add(egui::Button::new("Install"))
-                                .on_hover_text("Download and install the update")
-                                .clicked()
-                            {
-                                self.self_update_rid = Some(message::SelfUpdate::send(
-                                    &mut self.request_counter,
-                                    self.tx.clone(),
-                                    ctx.clone(),
-                                ));
-                            }
-
-                            if ui.button("Close").clicked() {
-                                self.show_update_time = None;
-                            }
-                        });
-                    });
-            }
+                });
         }
     }
 
@@ -2197,21 +2155,6 @@ struct WindowDetailedModInfo {
 
 impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-        if self.needs_restart
-            && let Some(original_exe_path) = &self.original_exe_path
-        {
-            debug!("needs restart");
-            self.needs_restart = false;
-
-            debug!("restarting...");
-            let _child = std::process::Command::new(original_exe_path)
-                .spawn()
-                .unwrap();
-            debug!("created child process");
-
-            std::process::exit(0);
-        }
-
         // do some init things that depend on ctx so cannot be done earlier
         if !self.has_run_init {
             self.has_run_init = true;
@@ -2259,7 +2202,6 @@ impl eframe::App for App {
                     self.integrate_rid.is_none()
                         && self.update_rid.is_none()
                         && self.lint_rid.is_none()
-                        && self.self_update_rid.is_none()
                         && self.detailed_mod_info_windows.is_empty()
                         && self.fetch_mod_details_rid.is_empty()
                         && self.state.config.drg_pak_path.is_some(),
@@ -2760,11 +2702,4 @@ impl From<FetchProgress> for SpecFetchProgress {
             FetchProgress::Complete { .. } => Self::Complete,
         }
     }
-}
-
-#[derive(Debug, PartialEq)]
-pub enum SelfUpdateProgress {
-    Pending,
-    Progress { progress: u64, size: u64 },
-    Complete,
 }
