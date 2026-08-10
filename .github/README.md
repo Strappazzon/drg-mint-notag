@@ -37,7 +37,9 @@ Changes or merges since [upstream/master @ 940e7aa](https://github.com/trumank/m
 - Shorter [Approval labels](https://mod.io/g/drg/r/mod-guidelines-and-status-categories#heading-3)
 - <kbd>CTRL</kbd> + <kbd>Q</kbd> keyboard shortcut to quit the program
 - Support for mod.io new URL format
-- pak bundle will be compressed
+- Support for mod.io new Personal Access Tokens
+- pak bundle compression
+- Removed self-update functionality
 - Renamed config and cache directories from `drg-mod-integration` to `mint`
   - Will default to legacy directories if they exist
 
